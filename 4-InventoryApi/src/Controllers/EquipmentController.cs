@@ -4,6 +4,7 @@ using App.Models.Entities;
 using App.Models.Dtos;
 using App.Data;
 using App.Common;
+using Microsoft.AspNetCore.Authorization;
 
 [ApiController]
 [Route("api/equipments")]
@@ -16,7 +17,7 @@ public class EquipmentController : ControllerBase
         _context = context;
     }
 
-    // CREATE
+    [Authorize( Roles = "Admin")]
     [HttpPost()]
     public async Task<IActionResult> Create(CreateEquipmentDto dto)
     {
@@ -64,6 +65,7 @@ public class EquipmentController : ControllerBase
     }
 
     // READ ALL
+    [Authorize]
     [HttpGet]
     public async Task<IActionResult> GetAll()
     {
@@ -87,6 +89,7 @@ public class EquipmentController : ControllerBase
 
     // READ BY ID
     [HttpGet("{id}")]
+    [Authorize]
     public async Task<IActionResult> GetById(int id)
     {
         try
@@ -118,6 +121,7 @@ public class EquipmentController : ControllerBase
     }
 
     // UPDATE
+    [Authorize(Roles = "Admin")]
     [HttpPut("{id}")]
     public async Task<IActionResult> Update(int id, CreateEquipmentDto dto)
     {
@@ -160,13 +164,13 @@ public class EquipmentController : ControllerBase
         }
     }
 
-    // DELETE
+    [Authorize(Roles = "Admin")]
     [HttpDelete("{id}")]
     public async Task<IActionResult> Delete(int id)
     {
         try
         {
-            var equipment = await _context.Equipments.FindAsync(id);
+            var equipment   = await _context.Equipments.FindAsync(id);
 
             if (equipment == null)
             {

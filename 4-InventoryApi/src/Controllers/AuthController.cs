@@ -67,7 +67,7 @@ public class AuthController : ControllerBase
         var user = await _context.Users
             .FirstOrDefaultAsync(u => u.Email == dto.Email);
 
-        if (user == null)
+        if (user == null || user.Status == UserStatus.Inactive)
             return Unauthorized("User does not exist");
 
         var checkPass = BCrypt.Net.BCrypt.Verify(dto.Password, user.PasswordHash);

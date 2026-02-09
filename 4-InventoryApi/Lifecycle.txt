@@ -1,0 +1,42 @@
+Borrows(2)
+===================
+1> Client Request
+2> Assigned by Admin
+
+
+
+LifeCycle of Client Request:    REQUEST-ACCEPT-PENDING-(APPROVED or WAITLISTED)<->ACK
+=====================================================================================
+1> Client Request the Equipment            (Equipment in)
+2> Admin Accepted the Request              (Equipment out)      process delivery
+3> Client After Pay - Pending              (Equipment out)      check Equipment
+4> Admin check
+    1=> Approved the Request               (Equiment in)        process collection
+    2=> Cancel Any issues                  (Equipment out)
+        1) After Communication Waitlist 
+        2) Repeat 3
+
+
+LifeCycle of Admin Request:    ASSIGNED-PENDING-(APPROVED or WAITLISTED)<->ACK
+====================================================================================
+1> Admin Assigned the Equiment             (Equipment out)      process delivery
+2> Client After Pay - Pending              (Equipment out)      check Equipment
+3> Admin check
+    1=> Approved the Request               (Equiment in)        process collection
+    2=> Cancel Any issues                  (Equipment out)
+        1) After Communication Waitlist 
+        2) Repeat 2
+
+
+KEYS
+==============================
+1) Request         -> Payment
+2) Accepted
+3) Assigned
+4) Pending         -> Payment
+5) Approved
+6) Waitlisted     
+7) ACK             -> Payment
+8) Closed          -> More Conflict
+
+
