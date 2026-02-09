@@ -2,6 +2,6 @@ namespace App.Models.Dtos;
 
 public class LoginDto
 {
-    public string email {get; set;}
-    public string password {get; set;}
+    public required string Email {get; set;}
+    public required string Password {get; set;}
 }

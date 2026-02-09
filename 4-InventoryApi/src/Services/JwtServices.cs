@@ -2,6 +2,7 @@ using Microsoft.IdentityModel.Tokens;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text;
+using App.Models.Entities;
 
 namespace App.Services;
 
@@ -14,11 +15,13 @@ public class JwtService
         _config = config;
     }
 
-    public string GenerateToken(string email)
+    public string GenerateToken(int userId, string email, UserRole role)
     {
         var claims = new[]
         {
-            new Claim(ClaimTypes.Email, email)
+            new Claim(ClaimTypes.NameIdentifier, userId.ToString()),
+            new Claim(ClaimTypes.Email, email),
+            new Claim(ClaimTypes.Role, role.ToString())
         };
 
         var key = new SymmetricSecurityKey(

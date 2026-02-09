@@ -2,8 +2,6 @@ using System.ComponentModel.DataAnnotations;
 
 namespace App.Models.Entities;
 
-// ================= ENUMS =================
-
 public enum BorrowStatus
 {
     Requested = 1,
@@ -21,25 +19,37 @@ public enum PaymentMode
     NotPaid = 5
 }
 
-// ================= ENTITY =================
-
 public class Borrow
 {
     [Key]
     public int Id { get; set; }
+
     public int UserId { get; set; }
     public int EquipmentId { get; set; }
-    public int Count { get; set; } = 1;
-    public PaymentMode PaymentMode { get; set; }
-    public BorrowStatus Status { get; set; } = BorrowStatus.Requested;
+
     public int BorrowedDays { get; set; }
-    public decimal Price { get; set; }
-    public decimal Paid { get; set; }
+
+    public int EquipmentCount { get; set; } = 1;
+    public int ReturnedCount { get; set; } = 0;
+
+    public decimal EquipmentPrice { get; set; }
+    public decimal TotalPrice { get; set; }
+    public decimal PaidAmount { get; set; }
     public decimal DueAmount { get; set; }
+    public decimal LateFee { get; set; } = 0;
+
+    public PaymentMode PaymentMode { get; set; } = PaymentMode.NotPaid;
+    public bool IsPaymentCompleted { get; set; } = false;
+    public DateTime? PaymentDate { get; set; }
+
+    public BorrowStatus Status { get; set; } = BorrowStatus.Requested;
+
     public DateTime AssignedDate { get; set; }
     public DateTime ReleaseDate { get; set; }
+
     public string? PreRemarks { get; set; }
     public string? PostRemarks { get; set; }
+
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 

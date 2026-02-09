@@ -1,15 +1,17 @@
 using Microsoft.EntityFrameworkCore;
-using App.Models.Entities;
 using System.Reflection.Metadata;
+using App.Models.Entities;
 
 namespace App.Data;
 
-public class AppDbContext : DbContext
+public class AppDBContext : DbContext
 {
-    public AppDbContext(DbContextOptions<AppDbContext> options)
+    public AppDBContext(DbContextOptions<AppDBContext> options)
         : base(options) { }
 
     public DbSet<User> Users => Set<User>();
+    public DbSet<Equipment> Equipments => Set<Equipment>();
+    public DbSet<Borrow> Borrows => Set<Borrow>();
     protected override void OnModelCreating(ModelBuilder builder)
     {
         base.OnModelCreating(builder);
@@ -20,7 +22,7 @@ public class AppDbContext : DbContext
             entity.Property(e => e.Condition).HasConversion<int>();
             entity.Property(e => e.Status).HasConversion<int>();
 
-            entity.Property(e => e.PricePerDay)
+            entity.Property(e => e.Price)
                   .HasPrecision(10, 2);
 
             entity.Property(e => e.Name)
