@@ -1,10 +1,11 @@
-using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
+using App.Data;
 using App.Models.Entities;
 using App.Models.Dtos;
-using App.Data;
 using App.Common;
+
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 
 [ApiController]
 [Route("api/equipments")]
@@ -17,14 +18,28 @@ public class EquipmentController : ControllerBase
         _context = context;
     }
 
-    [Authorize( Roles = "Admin")]
-    [HttpPost()]
-    public async Task<IActionResult> Create(CreateEquipmentDto dto)
+    // =========================================================
+    // CREATE EQUIPMENT (WITH ITEMS)
+    // =========================================================
+
+    [Authorize(Roles = "Admin")]
+    [HttpPost]
+    public async Task<IActionResult> CreateEquipment(CreateEquipmentDto dto)
     {
         try
         {
+            if (dto.Count <= 0)
+            {
+                return BadRequest(new ApiResponse<object>
+                {
+                    Status = false,
+                    Message = "Count must be greater than zero",
+                    Data = null
+                });
+            }
+
             var exists = await _context.Equipments
-                .AnyAsync(e => e.Name == dto.Name);
+                .AnyAsync(e => EF.Functions.ILike(e.Name, dto.Name));
 
             if (exists)
             {
@@ -42,142 +57,260 @@ public class EquipmentController : ControllerBase
                 Description = dto.Description,
                 Price = dto.Price,
                 Category = dto.Category,
-                Condition = dto.Condition,
-                Status = dto.Status,
-                Count = dto.Count
+                Count = dto.Count,
+                CreatedAt = DateTime.UtcNow,
+                UpdatedAt = DateTime.UtcNow,
+                EquipmentItems = new List<EquipmentItem>()
             };
+
+            for (int i = 0; i < dto.Count; i++)
+            {
+                equipment.EquipmentItems.Add(new EquipmentItem
+                {
+                    Condition = EquipmentCondition.New,
+                    Status = EquipmentStatus.Available,
+                    CreatedAt = DateTime.UtcNow,
+                    UpdatedAt = DateTime.UtcNow
+                });
+            }
 
             _context.Equipments.Add(equipment);
             await _context.SaveChangesAsync();
 
-            return Ok(new ApiResponse<Equipment>
+            return Ok(new ApiResponse<object>
             {
                 Status = true,
                 Message = "Equipment created successfully",
-                Data = equipment
+                Data = new { equipment.Id }
             });
         }
-        catch (Exception ex)
+        catch (Exception)
         {
-            Console.WriteLine(ex);
             return StatusCode(500, ErrorResponse());
         }
     }
 
-    // READ ALL
+    
+    // FILTERED LIST (GROUP + ITEM MODE)
+
     [Authorize]
-    [HttpGet]
-    public async Task<IActionResult> GetAll()
+    [HttpPost("filteredequipment")]
+    public async Task<IActionResult> GetFilteredEquipments(GetFilteredEquipmentDto dto)
     {
         try
         {
-            var equipments = await _context.Equipments.ToListAsync();
-
-            return Ok(new ApiResponse<List<Equipment>>
+            if (dto.IsGroup)
             {
-                Status = true,
-                Message = "Equipments fetched successfully",
-                Data = equipments
-            });
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine(ex);
-            return StatusCode(500, ErrorResponse());
-        }
-    }
-
-    // READ BY ID
-    [HttpGet("{id}")]
-    [Authorize]
-    public async Task<IActionResult> GetById(int id)
-    {
-        try
-        {
-            var equipment = await _context.Equipments.FindAsync(id);
-
-            if (equipment == null)
-            {
-                return NotFound(new ApiResponse<object>
+                var baseQuery = _context.Equipments.AsQueryable();
+                var totalCount = await baseQuery.CountAsync();
+                if (!string.IsNullOrWhiteSpace(dto.SearchString))
                 {
-                    Status = false,
-                    Message = "Equipment not found",
-                    Data = null
+                    var search = dto.SearchString.ToLower();
+                    baseQuery = baseQuery.Where(e => e.Name.ToLower().Contains(search));
+                }
+
+                // STEP 1: Get grouped result first (no enum conversion here)
+                var groupedData = await baseQuery
+                    .GroupBy(e => e.Category)
+                    .Select(g => new
+                    {
+                        Category = g.Key,
+                        Count = g.Count()
+                    })
+                    .ToListAsync(); 
+
+                // STEP 2: Convert enum to string in memory
+                var categoryCounts = groupedData
+                    .ToDictionary(
+                        x => x.Category.ToString(),
+                        x => x.Count
+                    );
+
+                var query = baseQuery
+                    .Include(e => e.EquipmentItems)
+                    .AsQueryable();
+
+                if (dto.Category != 0)
+                    query = query.Where(e => e.Category == (EquipmentCategory)dto.Category);
+
+                var data = await query
+                    .OrderByDescending(e => e.CreatedAt)
+                    .Skip((dto.PageNo - 1) * dto.RowCount)
+                    .Take(dto.RowCount)
+                    .Select(e => new
+                    {
+                        e.Id,
+                        e.Name,
+                        e.Description,
+                        e.Price,
+                        e.Category, 
+
+                        TotalItems = e.EquipmentItems.Count(),
+                        AvailableCount = e.EquipmentItems.Count(i => i.Status == EquipmentStatus.Available),
+                        InUseCount = e.EquipmentItems.Count(i => i.Status == EquipmentStatus.InUse),
+                        ReservedCount = e.EquipmentItems.Count(i => i.Status == EquipmentStatus.Reserved),
+                        MaintenanceCount = e.EquipmentItems.Count(i => i.Status == EquipmentStatus.UnderMaintenance)
+                    })
+                    .ToListAsync();
+
+                return Ok(new ApiResponse<object>
+                {
+                    Status = true,
+                    Message = "Grouped equipments fetched",
+                    Data = new
+                    {
+                        Items = data,
+                        TotalCount = totalCount,
+                        CategoryCounts = categoryCounts
+                    }
                 });
             }
 
-            return Ok(new ApiResponse<Equipment>
+            else
             {
-                Status = true,
-                Message = "Equipment fetched successfully",
-                Data = equipment
-            });
+                var query = _context.EquipmentItems
+                    .Include(e => e.Equipment)
+                    .AsQueryable();
+                int totalCount;
+                if (dto.EquipmentId != 0)
+                {
+                    query = query.Where(e => e.EquipmentId == dto.EquipmentId);
+                    totalCount = await query.CountAsync();
+                } else totalCount = await query.CountAsync();
+
+                if (dto.Status != 0)
+                    query = query.Where(e => e.Status == (EquipmentStatus)dto.Status);
+
+                if (dto.Condition != 0)
+                    query = query.Where(e => e.Condition == (EquipmentCondition)dto.Condition);
+
+                if (dto.Category != 0)
+                    query = query.Where(e => e.Equipment.Category == (EquipmentCategory)dto.Category);
+
+                if (!string.IsNullOrWhiteSpace(dto.SearchString))
+                {
+                    var search = dto.SearchString.ToLower();
+                    query = query.Where(e =>
+                        e.Equipment.Name.ToLower().Contains(search));
+                }
+
+                var statusCounts = await query
+                    .GroupBy(e => e.Status)
+                    .Select(g => new { g.Key, Count = g.Count() })
+                    .ToDictionaryAsync(x => x.Key.ToString(), x => x.Count);
+
+                var conditionCounts = await query
+                    .GroupBy(e => e.Condition)
+                    .Select(g => new { g.Key, Count = g.Count() })
+                    .ToDictionaryAsync(x => x.Key.ToString(), x => x.Count);
+
+                var data = await query
+                    .OrderByDescending(e => e.CreatedAt)
+                    .ThenByDescending(e => e.Id)
+                    .Skip((dto.PageNo - 1) * dto.RowCount)
+                    .Take(dto.RowCount)
+                    .Select(e => new
+                    {
+                        e.Id,
+                        e.EquipmentId,
+                        EquipmentName = e.Equipment.Name,
+                        EquipmentCategory = e.Equipment.Category,
+                        e.Equipment.Price,
+                        e.Equipment.Description,
+                        Status = (int)e.Status,
+                        Condition = (int)e.Condition,
+                        e.CreatedAt,
+                        e.UpdatedAt
+                    })
+                    .ToListAsync();
+
+                return Ok(new ApiResponse<object>
+                {
+                    Status = true,
+                    Message = "Equipment items fetched",
+                    Data = new
+                    {
+                        Items = data,
+                        TotalCount = totalCount,
+                        StatusCounts = statusCounts,
+                        ConditionCounts = conditionCounts
+                    }
+                });
+            }
         }
-        catch (Exception ex)
+        catch (Exception)
         {
-            Console.WriteLine(ex);
             return StatusCode(500, ErrorResponse());
         }
     }
 
-    // UPDATE
+    // UPDATE EQUIPMENT
+
     [Authorize(Roles = "Admin")]
     [HttpPut("{id}")]
-    public async Task<IActionResult> Update(int id, CreateEquipmentDto dto)
+    public async Task<IActionResult> UpdateEquipment(int id, UpdateEquipmentDto dto)
     {
         try
         {
             var equipment = await _context.Equipments.FindAsync(id);
 
             if (equipment == null)
-            {
                 return NotFound(new ApiResponse<object>
                 {
                     Status = false,
                     Message = "Equipment not found",
                     Data = null
                 });
-            }
 
             equipment.Name = dto.Name;
             equipment.Description = dto.Description;
             equipment.Price = dto.Price;
             equipment.Category = dto.Category;
-            equipment.Condition = dto.Condition;
-            equipment.Status = dto.Status;
-            equipment.Count = dto.Count;
             equipment.UpdatedAt = DateTime.UtcNow;
 
             await _context.SaveChangesAsync();
 
-            return Ok(new ApiResponse<Equipment>
+            return Ok(new ApiResponse<object>
             {
                 Status = true,
                 Message = "Equipment updated successfully",
-                Data = equipment
+                Data = null
             });
         }
-        catch (Exception ex)
+        catch (Exception)
         {
-            Console.WriteLine(ex);
             return StatusCode(500, ErrorResponse());
         }
     }
 
+    // =========================================================
+    // DELETE EQUIPMENT (SAFE DELETE)
+    // =========================================================
+
     [Authorize(Roles = "Admin")]
     [HttpDelete("{id}")]
-    public async Task<IActionResult> Delete(int id)
+    public async Task<IActionResult> DeleteEquipment(int id)
     {
         try
         {
-            var equipment   = await _context.Equipments.FindAsync(id);
+            var equipment = await _context.Equipments
+                .Include(e => e.EquipmentItems)
+                .FirstOrDefaultAsync(e => e.Id == id);
 
             if (equipment == null)
-            {
                 return NotFound(new ApiResponse<object>
                 {
                     Status = false,
                     Message = "Equipment not found",
+                    Data = null
+                });
+
+            if (equipment.EquipmentItems.Any())
+            {
+                return BadRequest(new ApiResponse<object>
+                {
+                    Status = false,
+                    Message = "Cannot delete equipment with existing items",
                     Data = null
                 });
             }
@@ -192,12 +325,13 @@ public class EquipmentController : ControllerBase
                 Data = null
             });
         }
-        catch (Exception ex)
+        catch (Exception)
         {
-            Console.WriteLine(ex);
             return StatusCode(500, ErrorResponse());
         }
     }
+
+    // =========================================================
 
     private ApiResponse<object> ErrorResponse()
     {

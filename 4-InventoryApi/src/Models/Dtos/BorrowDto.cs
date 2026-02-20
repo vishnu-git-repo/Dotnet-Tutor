@@ -19,7 +19,14 @@ public class RequestBorrowDto
 
 public class AssignBorrowDto
 {
-    public int Id { get; set; }
+    public int UserId { get; set; }
+    public int EquipmentId { get; set; }
+    public int EquipmentCount { get; set; }
+    public int BorrowedDays { get; set; }
+
+    [Precision(18, 2)]
+    public decimal EquipmentPrice { get; set; }
+
     public string? PostRemarks { get; set; }
 
     public BorrowStatus Status { get; set; } = BorrowStatus.Assigned;
@@ -28,7 +35,7 @@ public class AssignBorrowDto
 
 public class AcceptedBorrowDto
 {
-    public int Id { get; set; }
+    public int UserId { get; set; }
     public string? PostRemarks { get; set; }
 
     public BorrowStatus Status { get; set; } = BorrowStatus.Accepted;
@@ -37,16 +44,14 @@ public class AcceptedBorrowDto
 
 public class PendingBorrowDto
 {
-    public int Id { get; set; }
-
+    public int UserId { get; set; }
     public BorrowStatus Status { get; set; } = BorrowStatus.Pending;
     public DateTime? PendingDate { get; set; }
 }
 
 public class PaidBorrowDto
 {
-    public int Id { get; set; }
-
+    public int UserId { get; set; }
     public PaymentMode PaymentMode { get; set; }
     public string? PaymentId { get; set; }
     public bool IsPaymentCompleted { get; set; } = true;
@@ -57,7 +62,7 @@ public class PaidBorrowDto
 
 public class ApprovedBorrowDto
 {
-    public int Id { get; set; }
+    public int UserId { get; set; }
 
     public BorrowStatus Status { get; set; } = BorrowStatus.Approved;
     public DateTime? ApprovedDate { get; set; }
@@ -65,7 +70,7 @@ public class ApprovedBorrowDto
 
 public class WaitlistedBorrowDto
 {
-    public int Id { get; set; }
+    public int UserId { get; set; }
     public string? PostRemarks { get; set; }
 
     public BorrowStatus Status { get; set; } = BorrowStatus.Waitlisted;
@@ -74,7 +79,7 @@ public class WaitlistedBorrowDto
 
 public class AckBorrowDto
 {
-    public int Id { get; set; }
+    public int UserId { get; set; }
     public string? AckRemarks { get; set; }
 
     public BorrowStatus Status { get; set; } = BorrowStatus.Ack;
@@ -83,7 +88,7 @@ public class AckBorrowDto
 
 public class ClosedBorrowDto
 {
-    public int Id { get; set; }
+    public int UserId { get; set; }
 
     public BorrowStatus Status { get; set; } = BorrowStatus.Closed;
     public DateTime? ClosedDate { get; set; }

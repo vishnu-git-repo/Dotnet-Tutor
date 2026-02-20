@@ -2,14 +2,6 @@ using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 
 namespace App.Models.Entities;
-public enum EquipmentCondition
-{
-    New = 1,
-    Good = 2,
-    NeedsRepair = 3,
-    Damaged = 4,
-    Retired = 5
-}
 
 public enum EquipmentCategory
 {
@@ -19,14 +11,6 @@ public enum EquipmentCategory
     Furniture = 4,
     SafetyGear = 5,
     Other = 6
-}
-
-public enum EquipmentStatus
-{
-    Available = 1,
-    InUse = 2,
-    Reserved = 3,
-    UnderMaintenance = 4
 }
 
 public class Equipment
@@ -40,18 +24,16 @@ public class Equipment
 
     public string? Description { get; set; }
 
+    public int Count { get; set; }
+
     [Column(TypeName = "decimal(10,2)")]
     public decimal Price { get; set; }
 
     public EquipmentCategory Category { get; set; }
 
-    public EquipmentCondition Condition { get; set; }
+    public DateTime CreatedAt { get; set; }
 
-    public EquipmentStatus Status { get; set; }
+    public DateTime UpdatedAt { get; set; }
 
-    public int Count { get; set; }
-
-    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
-
-    public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
+    public ICollection<EquipmentItem> EquipmentItems { get; set; } = new List<EquipmentItem>();
 }

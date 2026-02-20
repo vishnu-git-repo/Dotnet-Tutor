@@ -1,13 +1,13 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using BCrypt.Net;
-
 using App.Models.Entities;
 using App.Models.Dtos;
 using App.Data;
-using App.Services; 
-
-
+using App.Services;
+using App.Common;
+using Microsoft.AspNetCore.Authorization;
+using System.Security.Claims;
 
 namespace App.Controllers;
 
@@ -59,7 +59,6 @@ public class AuthController : ControllerBase
         }
     }
 
-
     [HttpPost("login")]
     public async Task<IActionResult> Login(LoginDto dto)
     {
@@ -67,27 +66,96 @@ public class AuthController : ControllerBase
         var user = await _context.Users
             .FirstOrDefaultAsync(u => u.Email == dto.Email);
 
-        if (user == null || user.Status == UserStatus.Inactive)
+        if (user == null)
             return Unauthorized("User does not exist");
+        if (user.Status == UserStatus.Inactive)
+            return Unauthorized("User is inactive");
 
-        var checkPass = BCrypt.Net.BCrypt.Verify(dto.Password, user.PasswordHash);
-        if (!checkPass)
-            return Unauthorized("Invalid password");
-
+        // Generate JWT
         var token = _jwt.GenerateToken(user.Id, user.Email, user.Role);
 
-        return Ok(new
+        var cookieOptions = new CookieOptions
         {
-            token,
-            user = new
+            HttpOnly = true,               
+            Secure = false,                
+            SameSite = SameSiteMode.Lax, 
+            Expires = DateTime.UtcNow.AddHours(24*1)
+        };
+
+        Response.Cookies.Append("jwt", token, cookieOptions);
+
+        return Ok(new ApiResponse<Object>()
+        {
+            Status = true,
+            Message = "Login Successful",
+            Data = new
             {
-                user.Id,
-                user.Name,
-                user.Email,
-                Role = user.Role.ToString()
-            }
+                UserRole = user.Role,
+                UserId = user.Id
+            } // Token is stored in cookie, no need to send in body for security
         });
     }
 
+    [HttpGet("logout")]
+    public async Task<IActionResult> Logout()
+    {
+        Response.Cookies.Delete("jwt");
+        return Ok(new ApiResponse<Object>()
+        {
+            Status = true,
+            Message = "Logout Success",
+            Data = null
+        });
+    }
 
+    [Authorize]
+    [HttpGet("me")]
+    public async Task<IActionResult> AuthMe()
+    {
+        Console.WriteLine("Checking the Auth>>>>>>>>>>>>>>>>");
+        try
+        {
+            var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier);
+
+            if (userIdClaim == null)
+                return Unauthorized(new ApiResponse<Object>()
+                {
+                    Status = false,
+                    Message = "Token Missing",
+                    Data = null
+                });
+
+            var userId = int.Parse(userIdClaim.Value);
+
+            var user = await _context.Users
+                .Where(u => u.Id == userId)
+                .Select(u => new
+                {
+                    u.Id,
+                    u.Name,
+                    u.Email,
+                    u.Gender,
+                    u.Address,
+                    u.Phone,
+                    u.Role,
+                    u.Status
+                })
+                .FirstOrDefaultAsync();
+
+            if (user == null)
+                return NotFound("User not found");
+
+            return Ok(new ApiResponse<object>()
+            {
+                Status = true,
+                Message = "User fetched successfully",
+                Data = user
+            });
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine(ex.Message);
+            return StatusCode(500, "Something went wrong");
+        }
+    }
 }

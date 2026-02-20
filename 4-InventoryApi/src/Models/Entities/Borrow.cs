@@ -40,6 +40,8 @@ public class Borrow
     [Required]
     public int BorrowedDays { get; set; }
 
+    public int BorrowItemsId {get; set;}
+
     public int EquipmentCount { get; set; } = 1;
     public int ReturnedCount { get; set; } = 0;
 
