@@ -2,6 +2,7 @@ using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 using Microsoft.EntityFrameworkCore;
 
+
 namespace App.Models.Entities;
 
 public enum BorrowStatus
@@ -34,41 +35,33 @@ public class Borrow
     [Required]
     public int UserId { get; set; }
 
-    [Required]
-    public int EquipmentId { get; set; }
 
     [Required]
-    public int BorrowedDays { get; set; }
+    public DateTime StartDate { get; set; }
+    [Required]
+    public DateTime ExpectedReturnDate { get; set; }
+    public DateTime? ActualReturnDate { get; set; }
 
-    public int BorrowItemsId {get; set;}
-
-    public int EquipmentCount { get; set; } = 1;
-    public int ReturnedCount { get; set; } = 0;
-
-    [Precision(18, 2)]
-    public decimal EquipmentPrice { get; set; }
 
     [Precision(18, 2)]
     public decimal TotalPrice { get; set; }
-
     [Precision(18, 2)]
     public decimal PaidAmount { get; set; }
-
     [Precision(18, 2)]
     public decimal DueAmount { get; set; }
-
     [Precision(18, 2)]
     public decimal LateFee { get; set; } = 0;
-
     public PaymentMode PaymentMode { get; set; } = PaymentMode.NotPaid;
     public bool IsPaymentCompleted { get; set; } = false;
     public string? PaymentId { get; set; }
 
+
     public BorrowStatus Status { get; set; } = BorrowStatus.Requested;
+    public int EquipmentCounts {get; set;} = 1;
 
     public DateTime? RequestedDate { get; set; }
     public DateTime? AcceptedDate { get; set; }
-    public DateTime? AssingnedDate { get; set; }
+    public DateTime? AssignedDate { get; set; }
     public DateTime? PendingDate { get; set; }
     public DateTime? PaidDate { get; set; }
     public DateTime? ApprovedDate { get; set; }
@@ -86,6 +79,5 @@ public class Borrow
     [ForeignKey(nameof(UserId))]
     public User? User { get; set; }
 
-    [ForeignKey(nameof(EquipmentId))]
-    public Equipment? Equipment { get; set; }
+    public ICollection<BorrowItems>? BorrowItems { get; set; }
 }

@@ -3,19 +3,22 @@ using App.Models.Entities;
 
 namespace App.Models.Dtos;
 
+// Request
 public class RequestBorrowDto
 {
     public int UserId { get; set; }
-    public int EquipmentId { get; set; }
-    public int EquipmentCount { get; set; }
-    public int BorrowedDays { get; set; }
 
-    [Precision(18, 2)]
-    public decimal EquipmentPrice { get; set; }
+    public DateTime StartDate { get; set; }
+    public DateTime ExpectedReturnDate { get; set; }
 
-    public BorrowStatus Status { get; set; } = BorrowStatus.Requested;
-    public DateTime? RequestedDate { get; set; }
+    public List<RequestBorrowItemDto> Items { get; set; } = new();
 }
+public class RequestBorrowItemDto
+{
+    public int EquipmentId { get; set; }
+    public int Quantity { get; set; }
+}
+
 
 public class AssignBorrowDto
 {
@@ -36,7 +39,7 @@ public class AssignBorrowDto
 public class AcceptedBorrowDto
 {
     public int UserId { get; set; }
-    public string? PostRemarks { get; set; }
+    public string? PreRemarks { get; set; }
 
     public BorrowStatus Status { get; set; } = BorrowStatus.Accepted;
     public DateTime? AcceptedDate { get; set; }
@@ -92,4 +95,28 @@ public class ClosedBorrowDto
 
     public BorrowStatus Status { get; set; } = BorrowStatus.Closed;
     public DateTime? ClosedDate { get; set; }
+}
+
+
+public class GetAdminBorrowDto
+{
+    public int PageNo {get; set;}
+    public int RowCount {get; set;}
+    public int Status {get; set;}
+    public int? TotalCount {get; set;}
+    public string SearchString {get; set;} = "";
+    public int EquipmentId {get; set;}
+    public int EquipmentItemId {get; set;}
+    public int BorrowId {get; set;}
+    public int UserId {get; set;}
+}
+
+public class GetBorrowDto
+{
+    public int Id {get; set;}
+}
+
+public class GetClientBorrowDto
+{
+    
 }

@@ -18,10 +18,7 @@ public class EquipmentController : ControllerBase
         _context = context;
     }
 
-    // =========================================================
     // CREATE EQUIPMENT (WITH ITEMS)
-    // =========================================================
-
     [Authorize(Roles = "Admin")]
     [HttpPost]
     public async Task<IActionResult> CreateEquipment(CreateEquipmentDto dto)
@@ -92,7 +89,6 @@ public class EquipmentController : ControllerBase
 
     
     // FILTERED LIST (GROUP + ITEM MODE)
-
     [Authorize]
     [HttpPost("filteredequipment")]
     public async Task<IActionResult> GetFilteredEquipments(GetFilteredEquipmentDto dto)
@@ -244,8 +240,8 @@ public class EquipmentController : ControllerBase
         }
     }
 
-    // UPDATE EQUIPMENT
 
+    // UPDATE EQUIPMENT
     [Authorize(Roles = "Admin")]
     [HttpPut("{id}")]
     public async Task<IActionResult> UpdateEquipment(int id, UpdateEquipmentDto dto)
@@ -283,10 +279,7 @@ public class EquipmentController : ControllerBase
         }
     }
 
-    // =========================================================
-    // DELETE EQUIPMENT (SAFE DELETE)
-    // =========================================================
-
+    
     [Authorize(Roles = "Admin")]
     [HttpDelete("{id}")]
     public async Task<IActionResult> DeleteEquipment(int id)
@@ -331,7 +324,6 @@ public class EquipmentController : ControllerBase
         }
     }
 
-    // =========================================================
 
     private ApiResponse<object> ErrorResponse()
     {

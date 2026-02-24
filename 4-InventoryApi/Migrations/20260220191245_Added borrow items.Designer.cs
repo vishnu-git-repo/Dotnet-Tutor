@@ -3,6 +3,7 @@ using System;
 using App.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace _4_InventoryApi.Migrations
 {
     [DbContext(typeof(AppDBContext))]
-    partial class AppDBContextModelSnapshot : ModelSnapshot
+    [Migration("20260220191245_Added borrow items")]
+    partial class Addedborrowitems
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -39,14 +42,14 @@ namespace _4_InventoryApi.Migrations
                     b.Property<string>("AckRemarks")
                         .HasColumnType("text");
 
-                    b.Property<DateTime?>("ActualReturnDate")
-                        .HasColumnType("timestamp with time zone");
-
                     b.Property<DateTime?>("ApprovedDate")
                         .HasColumnType("timestamp with time zone");
 
-                    b.Property<DateTime?>("AssignedDate")
+                    b.Property<DateTime?>("AssingnedDate")
                         .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("BorrowedDays")
+                        .HasColumnType("integer");
 
                     b.Property<DateTime?>("ClosedDate")
                         .HasColumnType("timestamp with time zone");
@@ -58,11 +61,15 @@ namespace _4_InventoryApi.Migrations
                         .HasPrecision(18, 2)
                         .HasColumnType("numeric(18,2)");
 
-                    b.Property<int>("EquipmentCounts")
+                    b.Property<int>("EquipmentCount")
                         .HasColumnType("integer");
 
-                    b.Property<DateTime>("ExpectedReturnDate")
-                        .HasColumnType("timestamp with time zone");
+                    b.Property<int>("EquipmentId")
+                        .HasColumnType("integer");
+
+                    b.Property<decimal>("EquipmentPrice")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
 
                     b.Property<bool>("IsPaymentCompleted")
                         .HasColumnType("boolean");
@@ -96,8 +103,8 @@ namespace _4_InventoryApi.Migrations
                     b.Property<DateTime?>("RequestedDate")
                         .HasColumnType("timestamp with time zone");
 
-                    b.Property<DateTime>("StartDate")
-                        .HasColumnType("timestamp with time zone");
+                    b.Property<int>("ReturnedCount")
+                        .HasColumnType("integer");
 
                     b.Property<int>("Status")
                         .HasColumnType("integer");
@@ -116,6 +123,8 @@ namespace _4_InventoryApi.Migrations
                         .HasColumnType("timestamp with time zone");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("EquipmentId");
 
                     b.HasIndex("UserId");
 
@@ -139,15 +148,8 @@ namespace _4_InventoryApi.Migrations
                     b.Property<int>("EquipmentItemId")
                         .HasColumnType("integer");
 
-                    b.Property<decimal>("EquipmentPrice")
-                        .HasPrecision(18, 2)
-                        .HasColumnType("numeric(18,2)");
-
-                    b.Property<bool>("IsReturned")
-                        .HasColumnType("boolean");
-
-                    b.Property<DateTime?>("ReturnedAt")
-                        .HasColumnType("timestamp with time zone");
+                    b.Property<int>("UserId")
+                        .HasColumnType("integer");
 
                     b.HasKey("Id");
 
@@ -156,6 +158,8 @@ namespace _4_InventoryApi.Migrations
                     b.HasIndex("EquipmentId");
 
                     b.HasIndex("EquipmentItemId");
+
+                    b.HasIndex("UserId");
 
                     b.ToTable("BorrowItems");
                 });
@@ -278,11 +282,19 @@ namespace _4_InventoryApi.Migrations
 
             modelBuilder.Entity("App.Models.Entities.Borrow", b =>
                 {
+                    b.HasOne("App.Models.Entities.Equipment", "Equipment")
+                        .WithMany()
+                        .HasForeignKey("EquipmentId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
                     b.HasOne("App.Models.Entities.User", "User")
                         .WithMany("Borrows")
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+
+                    b.Navigation("Equipment");
 
                     b.Navigation("User");
                 });
@@ -290,7 +302,7 @@ namespace _4_InventoryApi.Migrations
             modelBuilder.Entity("App.Models.Entities.BorrowItems", b =>
                 {
                     b.HasOne("App.Models.Entities.Borrow", "Borrow")
-                        .WithMany("BorrowItems")
+                        .WithMany()
                         .HasForeignKey("BorrowId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
@@ -307,11 +319,19 @@ namespace _4_InventoryApi.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
+                    b.HasOne("App.Models.Entities.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
                     b.Navigation("Borrow");
 
                     b.Navigation("Equipment");
 
                     b.Navigation("EquipmentItem");
+
+                    b.Navigation("User");
                 });
 
             modelBuilder.Entity("App.Models.Entities.EquipmentItem", b =>
@@ -323,11 +343,6 @@ namespace _4_InventoryApi.Migrations
                         .IsRequired();
 
                     b.Navigation("Equipment");
-                });
-
-            modelBuilder.Entity("App.Models.Entities.Borrow", b =>
-                {
-                    b.Navigation("BorrowItems");
                 });
 
             modelBuilder.Entity("App.Models.Entities.Equipment", b =>
