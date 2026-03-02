@@ -23,17 +23,9 @@ public class RequestBorrowItemDto
 public class AssignBorrowDto
 {
     public int UserId { get; set; }
-    public int EquipmentId { get; set; }
-    public int EquipmentCount { get; set; }
-    public int BorrowedDays { get; set; }
-
-    [Precision(18, 2)]
-    public decimal EquipmentPrice { get; set; }
-
-    public string? PostRemarks { get; set; }
-
-    public BorrowStatus Status { get; set; } = BorrowStatus.Assigned;
-    public DateTime? AssingnedDate { get; set; }
+    public DateTime StartDate { get; set; }
+    public DateTime ExpectedReturnDate { get; set; }
+    public List<RequestBorrowItemDto> Items { get; set; } = new();
 }
 
 public class AcceptedBorrowDto
@@ -48,8 +40,6 @@ public class AcceptedBorrowDto
 public class PendingBorrowDto
 {
     public int UserId { get; set; }
-    public BorrowStatus Status { get; set; } = BorrowStatus.Pending;
-    public DateTime? PendingDate { get; set; }
 }
 
 public class PaidBorrowDto
@@ -111,12 +101,17 @@ public class GetAdminBorrowDto
     public int UserId {get; set;}
 }
 
+public class GetClientBorrowDto
+{
+    public int PageNo {get; set;}
+    public int RowCount {get; set;}
+    public int Status {get; set;}
+    public string SearchString {get; set;} = "";
+    public int UserId {get; set;}
+    public int? TotalCount {get; set;}
+}
+
 public class GetBorrowDto
 {
     public int Id {get; set;}
-}
-
-public class GetClientBorrowDto
-{
-    
 }

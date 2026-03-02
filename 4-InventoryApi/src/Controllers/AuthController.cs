@@ -17,11 +17,13 @@ public class AuthController : ControllerBase
 {
     private readonly AppDBContext _context;
     private readonly JwtService _jwt;
+    private readonly IEmailService _emailService;
 
-    public AuthController(AppDBContext context, JwtService jwt)
+    public AuthController(AppDBContext context, JwtService jwt, IEmailService emailService)
     {
         _context = context;
         _jwt = jwt;
+        _emailService = emailService;
     }
 
     [HttpPost("register")]
@@ -31,7 +33,12 @@ public class AuthController : ControllerBase
         {
             var exists = await _context.Users.AnyAsync(u => u.Email == dto.Email);
             if (exists)
-                return BadRequest("Already registered");
+                return BadRequest(new ApiResponse<object>
+                {
+                    Status = false,
+                    Message = "User Already Exists",
+                    Data = null
+                });
 
             var user = new User
             {
@@ -48,13 +55,36 @@ public class AuthController : ControllerBase
             _context.Users.Add(user);
             await _context.SaveChangesAsync();
 
-            return Ok("Registration successful");
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    await _emailService.SendEmailAsync(
+                        user.Email,
+                        "Welcome To Inventory",
+                        EmailTemplates.WelcomeEmail(user.Name)
+                    );
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine("Email failed: " + ex.Message);
+                }
+            });
+
+            return Ok(new ApiResponse<object>()
+            {
+                Status = true,
+                Message = "Registration Successful",
+                Data = new
+                {
+                    UserRole = user.Role,
+                    UserId = user.Id
+                }
+            });
         }
         catch (Exception ex)
         {
             Console.WriteLine(ex.Message);
-            Console.WriteLine(ex.StackTrace);
-
             return StatusCode(500, "Something went wrong");
         }
     }
@@ -67,19 +97,29 @@ public class AuthController : ControllerBase
             .FirstOrDefaultAsync(u => u.Email == dto.Email);
 
         if (user == null)
-            return Unauthorized("User does not exist");
+            return Unauthorized(new ApiResponse<object>
+                {
+                    Status = false,
+                    Message = "User Not Exists",
+                    Data = null
+                });
         if (user.Status == UserStatus.Inactive)
-            return Unauthorized("User is inactive");
+            return Unauthorized(new ApiResponse<object>
+                {
+                    Status = false,
+                    Message = "You was blocked, Please contact admin",
+                    Data = null
+                });
 
         // Generate JWT
         var token = _jwt.GenerateToken(user.Id, user.Email, user.Role);
 
         var cookieOptions = new CookieOptions
         {
-            HttpOnly = true,               
-            Secure = false,                
-            SameSite = SameSiteMode.Lax, 
-            Expires = DateTime.UtcNow.AddHours(24*1)
+            HttpOnly = true,
+            Secure = false,
+            SameSite = SameSiteMode.Lax,
+            Expires = DateTime.UtcNow.AddHours(24 * 1)
         };
 
         Response.Cookies.Append("jwt", token, cookieOptions);

@@ -101,7 +101,7 @@ public class EquipmentController : ControllerBase
                 var totalCount = await baseQuery.CountAsync();
                 if (!string.IsNullOrWhiteSpace(dto.SearchString))
                 {
-                    var search = dto.SearchString.ToLower();
+                    var search = dto.SearchString.ToLower().Trim();
                     baseQuery = baseQuery.Where(e => e.Name.ToLower().Contains(search));
                 }
 

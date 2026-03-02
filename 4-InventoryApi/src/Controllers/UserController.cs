@@ -105,7 +105,7 @@ public class UserController : ControllerBase
 
             if (!string.IsNullOrWhiteSpace(dto.SearchString))
             {
-                var search = dto.SearchString.Trim();
+                var search = dto.SearchString.Trim().ToLower();
 
                 filteredQuery = filteredQuery.Where(u =>
                     (u.Name != null && u.Name.ToLower().Contains(search)) ||

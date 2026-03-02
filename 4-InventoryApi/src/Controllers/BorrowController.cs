@@ -129,24 +129,108 @@ public class BorrowController : ControllerBase
     [HttpPost("assign")]
     public async Task<IActionResult> AssignBorrow(AssignBorrowDto dto)
     {
-        var equipment = await _context.Equipments.FindAsync(dto.EquipmentId);
-        if (equipment == null)
-            return BadRequest(new ApiResponse<Object>() { Status = false, Message = "Equipment not found", Data = null });
+        using var transaction = await _context.Database.BeginTransactionAsync();
 
-        var totalPrice = dto.BorrowedDays * dto.EquipmentCount * dto.EquipmentPrice;
-
-        var borrow = new Borrow
+        try
         {
-            UserId = dto.UserId,
-            TotalPrice = totalPrice,
-            DueAmount = totalPrice,
-            Status = BorrowStatus.Assigned,
-            AssignedDate = DateTime.UtcNow
-        };
-        _context.Borrows.Add(borrow);
-        await _context.SaveChangesAsync();
+            if (dto.Items == null || !dto.Items.Any())
+            {
+                return Ok(new ApiResponse<object>
+                {
+                    Status = false,
+                    Message = "No items selected",
+                    Data = null
+                });
+            }
 
-        return Ok(new ApiResponse<Object>() { Status = true, Message = "Borrow assigned", Data = borrow });
+            var createBorrow = new Borrow
+            {
+                UserId = dto.UserId,
+                StartDate = dto.StartDate,
+                ExpectedReturnDate = dto.ExpectedReturnDate,
+                AssignedDate = DateTime.UtcNow,
+                Status = BorrowStatus.Assigned
+            };
+
+            _context.Borrows.Add(createBorrow);
+            await _context.SaveChangesAsync();
+
+            decimal totalPrice = 0;
+
+            foreach (var requestItem in dto.Items)
+            {
+                var equipment = await _context.Equipments
+                    .FirstOrDefaultAsync(e => e.Id == requestItem.EquipmentId);
+
+                if (equipment == null)
+                {
+                    await transaction.RollbackAsync();
+                    return Ok(new ApiResponse<object>
+                    {
+                        Status = false,
+                        Message = $"Equipment {requestItem.EquipmentId} not found",
+                        Data = null
+                    });
+                }
+
+                var availableItems = await _context.EquipmentItems
+                    .Where(e => e.EquipmentId == requestItem.EquipmentId &&
+                                e.Status == EquipmentStatus.Available)
+                    .Take(requestItem.Quantity)
+                    .ToListAsync();
+
+                if (availableItems.Count < requestItem.Quantity)
+                {
+                    await transaction.RollbackAsync();
+                    return Ok(new ApiResponse<object>
+                    {
+                        Status = false,
+                        Message = $"Not enough stock for {equipment.Name}",
+                        Data = null
+                    });
+                }
+
+                foreach (var item in availableItems)
+                {
+                    item.Status = EquipmentStatus.InUse;
+
+                    _context.BorrowItems.Add(new BorrowItems
+                    {
+                        BorrowId = createBorrow.Id,
+                        EquipmentId = equipment.Id,
+                        EquipmentItemId = item.Id,
+                        EquipmentPrice = equipment.Price
+                    });
+
+                    totalPrice += equipment.Price;
+                }
+            }
+
+            createBorrow.TotalPrice = totalPrice;
+            createBorrow.DueAmount = totalPrice;
+            createBorrow.UpdatedAt = DateTime.UtcNow;
+
+            await _context.SaveChangesAsync();
+            await transaction.CommitAsync();
+
+            return Ok(new ApiResponse<object>
+            {
+                Status = true,
+                Message = "Borrow requested successfully",
+                Data = new { BorrowId = createBorrow.Id }
+            });
+        }
+        catch (Exception)
+        {
+            await transaction.RollbackAsync();
+
+            return Ok(new ApiResponse<object>
+            {
+                Status = false,
+                Message = "Something went wrong",
+                Data = null
+            });
+        }
     }
 
     [Authorize(Roles = "Admin")]
@@ -431,15 +515,110 @@ public class BorrowController : ControllerBase
 
     [Authorize(Roles = "Client")]
     [HttpPost("clientBorrows")]
-    public async Task<IActionResult> GetClientBorrows()
+    public async Task<IActionResult> GetClientBorrows(GetClientBorrowDto dto)
     {
         try
         {
+            var baseQuery = _context.Borrows.AsNoTracking();
+            var totalCount = await baseQuery.CountAsync();
+
+            if (dto.UserId != 0)
+            {
+                baseQuery = baseQuery.Where(b => b.UserId == dto.UserId);
+            }
+
+            if (dto.Status != 0)
+            {
+                baseQuery = baseQuery.Where(b => b.Status == (BorrowStatus)dto.Status);
+            }
+
+            if (!string.IsNullOrWhiteSpace(dto.SearchString))
+            {
+                var search = dto.SearchString.ToLower();
+
+                baseQuery = baseQuery.Where(b =>
+                    (b.User != null && b.User.Name.ToLower().Contains(search)) ||
+                    b.BorrowItems!.Any(bi =>
+                        bi.Equipment != null &&
+                        bi.Equipment.Name.ToLower().Contains(search))
+                );
+            }
+
+            var filteredCount = await baseQuery.CountAsync();
+
+            var statusCounts = await _context.Borrows
+                .GroupBy(b => b.Status)
+                .Select(g => new
+                {
+                    Status = g.Key.ToString(),
+                    Count = g.Count()
+                })
+                .ToDictionaryAsync(x => x.Status, x => x.Count);
+
+            if ((dto.PageNo != 0) && (dto.RowCount != 0))
+            {
+                baseQuery = baseQuery
+                    .OrderByDescending(b => b.CreatedAt)
+                    .Skip((dto.PageNo - 1) * dto.RowCount)
+                    .Take(dto.RowCount);
+            }
+            else
+            {
+                baseQuery = baseQuery.OrderByDescending(b => b.CreatedAt);
+            }
+
+            var data = await baseQuery
+                .Select(b => new
+                {
+                    b.Id,
+                    b.Status,
+                    b.CreatedAt,
+                    b.EquipmentCounts,
+                    b.StartDate,
+                    b.ExpectedReturnDate,
+                    b.ActualReturnDate,
+                    b.TotalPrice,
+                    b.DueAmount,
+                    b.UserId,
+                    UserName = b.User != null ? b.User.Name : "",
+                    Equipments = b.BorrowItems!
+                        .Select(bi => new
+                        {
+                            bi.EquipmentId,
+                            EquipmentName = bi.Equipment != null ? bi.Equipment.Name : ""
+                        })
+                })
+                .ToListAsync();
+
+            var result = data.Select(b => new
+            {
+                b.Id,
+                b.Status,
+                b.CreatedAt,
+                b.EquipmentCounts,
+                b.StartDate,
+                b.ExpectedReturnDate,
+                b.ActualReturnDate,
+                ExpectedDuration = DateHelper.CalculateDuration(b.StartDate, b.ExpectedReturnDate),
+                b.TotalPrice,
+                b.DueAmount,
+                b.UserId,
+                b.UserName,
+                b.Equipments
+            });
+
+
             return Ok(new ApiResponse<Object>
             {
                 Status = true,
                 Message = "Borrow Fetched Successfully",
-                Data = null
+                Data = new
+                {
+                    TotalCount = totalCount,
+                    FilteredCount = filteredCount,
+                    StatusCounts = statusCounts,
+                    Items = result
+                }
             });
         }
         catch (Exception)
@@ -448,20 +627,6 @@ public class BorrowController : ControllerBase
         }
     }
 
-
-    [Authorize(Roles = "Admin")]
-    [HttpDelete("{id:int}")]
-    public async Task<IActionResult> Delete(int id)
-    {
-        var borrow = await _context.Borrows.FindAsync(id);
-        if (borrow == null)
-            return NotFound(new ApiResponse<Object>() { Status = false, Message = "Borrow not found", Data = (object?)null });
-
-        _context.Borrows.Remove(borrow);
-        await _context.SaveChangesAsync();
-
-        return Ok(new ApiResponse<Object>() { Status = true, Message = "Borrow deleted", Data = null });
-    }
 
     [Authorize]
     [HttpGet("{id:int}")]
@@ -530,7 +695,7 @@ public class BorrowController : ControllerBase
                 .Where(bi => bi.BorrowId == id)
                 .Include(bi => bi.Equipment)
                 .Include(bi => bi.EquipmentItem)
-                .Select( bi => new
+                .Select(bi => new
                 {
                     // Equipment
                     equipmentId = bi.EquipmentId,
@@ -556,9 +721,10 @@ public class BorrowController : ControllerBase
                 Status = true,
                 Message = "Borrow Fetched Successfully",
                 Data =
-                new {
-                    Borrow= borrow,
-                    Equipments= borrowItems
+                new
+                {
+                    Borrow = borrow,
+                    Equipments = borrowItems
                 }
             });
         }

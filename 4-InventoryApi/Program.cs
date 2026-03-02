@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using App.Data;
 using App.Services;
+using App.Common;
 using System.Text;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -17,11 +18,9 @@ builder.Services.AddDbContext<AppDBContext>(options =>
 
 builder.Services.AddScoped<JwtService>();
 
-// 🔐 JWT Authentication
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
     {
-        // 🔥 IMPORTANT: Read token from cookie
         options.Events = new JwtBearerEvents
         {
             OnMessageReceived = context =>
@@ -52,7 +51,6 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
         };
     });
 
-// 🌍 CORS for Angular
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowAngularApp", policy =>
@@ -60,15 +58,20 @@ builder.Services.AddCors(options =>
         policy.WithOrigins("http://localhost:4200")
               .AllowAnyHeader()
               .AllowAnyMethod()
-              .AllowCredentials(); // required for cookies
+              .AllowCredentials(); 
     });
 });
+
+builder.Services.Configure<EmailSettings>(
+    builder.Configuration.GetSection("EmailSettings"));
+    
+builder.Services.AddScoped<IEmailService, EmailService>();
+
 
 builder.Services.AddAuthorization();
 
 var app = builder.Build();
 
-// 🔥 Order matters
 app.UseRouting();
 
 app.UseCors("AllowAngularApp");
