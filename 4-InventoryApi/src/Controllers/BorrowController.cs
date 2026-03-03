@@ -5,16 +5,40 @@ using App.Models.Dtos;
 using App.Data;
 using Microsoft.AspNetCore.Authorization;
 using App.Common;
+using Razorpay.Api;
+using System.Security.Cryptography;
+using System.Text;
 
 [ApiController]
 [Route("api/borrows")]
 public class BorrowController : ControllerBase
 {
     private readonly AppDBContext _context;
+    private readonly IConfiguration _configuration;
 
-    public BorrowController(AppDBContext context)
+    public BorrowController(AppDBContext context, IConfiguration configuration)
     {
         _context = context;
+        _configuration = configuration;
+    }
+
+    private bool VerifySignature(string orderId, string paymentId, string signature)
+    {
+        var secret = _configuration["Razorpay:Secret"];
+        if (string.IsNullOrEmpty(secret)) return false;
+
+        var payload = $"{orderId}|{paymentId}";
+
+        using var hmac = new HMACSHA256(Encoding.UTF8.GetBytes(secret));
+        var hash = hmac.ComputeHash(Encoding.UTF8.GetBytes(payload));
+        var generatedSignature = BitConverter.ToString(hash)
+            .Replace("-", "")
+            .ToLower();
+
+        return CryptographicOperations.FixedTimeEquals(
+            Encoding.UTF8.GetBytes(generatedSignature),
+            Encoding.UTF8.GetBytes(signature)
+        );
     }
 
     [Authorize(Roles = "Client")]
@@ -268,26 +292,224 @@ public class BorrowController : ControllerBase
         return Ok(new ApiResponse<Object>() { Status = true, Message = "Borrow marked pending", Data = borrow });
     }
 
+    [Authorize(Roles = "Admin")]
+    [HttpPut("admin/collect-cash/{id:int}")]
+    public async Task<IActionResult> CollectCash(int id, AdminCashPaymentDto dto)
+    {
+        var borrow = await _context.Borrows.FindAsync(id);
+
+        if (borrow == null || borrow.UserId != dto.UserId)
+            return NotFound(new ApiResponse<object>
+            {
+                Status = false,
+                Message = "Borrow not found",
+                Data = null
+            });
+
+        if (borrow.IsPaymentCompleted)
+            return BadRequest(new ApiResponse<object>
+            {
+                Status = false,
+                Message = "Payment already completed",
+                Data = null
+            });
+
+        if (borrow.Status != BorrowStatus.Pending)
+            return BadRequest(new ApiResponse<object>
+            {
+                Status = false,
+                Message = "Borrow must be in pending state",
+                Data = null
+            });
+
+        if (dto.PaidAmount <= 0)
+            return BadRequest(new ApiResponse<object>
+            {
+                Status = false,
+                Message = "Invalid paid amount",
+                Data = null
+            });
+
+        if (dto.PaidAmount != borrow.TotalPrice)
+            return BadRequest(new ApiResponse<object>
+            {
+                Status = false,
+                Message = "Paid amount must match total price",
+                Data = null
+            });
+
+        borrow.PaymentMode = PaymentMode.Cash;
+        borrow.IsPaymentCompleted = true;
+        borrow.PaymentCompletedDate = DateTime.UtcNow;
+
+        borrow.PaidAmount = dto.PaidAmount;
+        borrow.DueAmount = 0;
+
+        borrow.Status = BorrowStatus.Paid;
+        borrow.PaidDate = DateTime.UtcNow;
+
+        borrow.PostRemarks = dto.Remarks;
+        borrow.UpdatedAt = DateTime.UtcNow;
+
+        await _context.SaveChangesAsync();
+
+        return Ok(new ApiResponse<object>
+        {
+            Status = true,
+            Message = "Cash collected successfully",
+            Data = borrow
+        });
+    }
+
+
     [Authorize(Roles = "Client")]
     [HttpPut("pay/{id:int}")]
     public async Task<IActionResult> PayBorrow(int id, PaidBorrowDto dto)
     {
         var borrow = await _context.Borrows.FindAsync(id);
-        if (borrow == null || borrow.UserId != dto.UserId)
-            return NotFound(new ApiResponse<Object>() { Status = false, Message = "Borrow not found", Data = (object?)null });
 
-        borrow.PaymentMode = dto.PaymentMode;
-        borrow.IsPaymentCompleted = dto.IsPaymentCompleted;
-        borrow.PaymentId = dto.PaymentId;
+        if (borrow == null || borrow.UserId != dto.UserId)
+            return NotFound(new ApiResponse<object>
+            {
+                Status = false,
+                Message = "Borrow not found",
+                Data = null
+            });
+
+        if (borrow.IsPaymentCompleted)
+            return BadRequest(new ApiResponse<object>
+            {
+                Status = false,
+                Message = "Payment already completed",
+                Data = null
+            });
+
+        if (borrow.Status != BorrowStatus.Pending)
+            return BadRequest(new ApiResponse<object>
+            {
+                Status = false,
+                Message = "Borrow is not in pending state",
+                Data = null
+            });
+
+        if (borrow.RazorpayOrderId != dto.RazorpayOrderId)
+            return BadRequest(new ApiResponse<object>
+            {
+                Status = false,
+                Message = "Order ID mismatch",
+                Data = null
+            });
+
+        if (!VerifySignature(dto.RazorpayOrderId!, dto.RazorpayPaymentId!, dto.RazorpaySignature!))
+            return BadRequest(new ApiResponse<object>
+            {
+                Status = false,
+                Message = "Invalid payment signature",
+                Data = null
+            });
+
+        borrow.PaymentMode = PaymentMode.RazorPay;
+
+        borrow.RazorpayPaymentId = dto.RazorpayPaymentId;
+        borrow.RazorpaySignature = dto.RazorpaySignature;
+
+        borrow.IsPaymentCompleted = true;
+        borrow.PaymentCompletedDate = DateTime.UtcNow;
         borrow.PaidAmount = borrow.TotalPrice;
         borrow.DueAmount = 0;
+
         borrow.Status = BorrowStatus.Paid;
         borrow.PaidDate = DateTime.UtcNow;
         borrow.UpdatedAt = DateTime.UtcNow;
 
         await _context.SaveChangesAsync();
 
-        return Ok(new ApiResponse<Object>() { Status = true, Message = "Payment completed", Data = borrow });
+        return Ok(new ApiResponse<object>
+        {
+            Status = true,
+            Message = "Payment completed successfully",
+            Data = borrow
+        });
+    }
+
+    [Authorize(Roles = "Client")]
+    [HttpPost("create-order/{id:int}")]
+    public async Task<IActionResult> CreateOrder(int id)
+    {
+        var borrow = await _context.Borrows.FindAsync(id);
+
+        if (borrow == null)
+            return NotFound(new ApiResponse<object>
+            {
+                Status = false,
+                Message = "Borrow not found",
+                Data = null
+            });
+
+        if (borrow.Status != BorrowStatus.Pending)
+            return BadRequest(new ApiResponse<object>
+            {
+                Status = false,
+                Message = "Borrow not in pending state",
+                Data = null
+            });
+
+        if (borrow.IsPaymentCompleted)
+            return BadRequest(new ApiResponse<object>
+            {
+                Status = false,
+                Message = "Payment already completed",
+                Data = null
+            });
+
+        if (!string.IsNullOrEmpty(borrow.RazorpayOrderId))
+            return BadRequest(new ApiResponse<object>
+            {
+                Status = false,
+                Message = "Order already created",
+                Data = null
+            });
+
+        var key = _configuration["Razorpay:Key"];
+        var secret = _configuration["Razorpay:Secret"];
+
+        if (string.IsNullOrEmpty(key) || string.IsNullOrEmpty(secret))
+            return BadRequest(new ApiResponse<object>
+            {
+                Status = false,
+                Message = "Razorpay configuration missing",
+                Data = null
+            });
+
+        RazorpayClient client = new RazorpayClient(key, secret);
+
+        var options = new Dictionary<string, object>
+        {
+            { "amount", (int)(borrow.TotalPrice * 100) },
+            { "currency", "INR" },
+            { "receipt", $"borrow_{borrow.Id}" },
+            { "payment_capture", 1 }
+        };
+
+        Order order = client.Order.Create(options);
+
+        borrow.RazorpayOrderId = order["id"].ToString();
+        borrow.PaymentInitiatedDate = DateTime.UtcNow;
+        borrow.UpdatedAt = DateTime.UtcNow;
+
+        await _context.SaveChangesAsync();
+
+        return Ok(new ApiResponse<object>
+        {
+            Status = true,
+            Message = "Order created",
+            Data = new
+            {
+                orderId = borrow.RazorpayOrderId,
+                amount = options["amount"],
+                key = key
+            }
+        });
     }
 
     [Authorize(Roles = "Admin")]
@@ -520,12 +742,21 @@ public class BorrowController : ControllerBase
         try
         {
             var baseQuery = _context.Borrows.AsNoTracking();
-            var totalCount = await baseQuery.CountAsync();
 
             if (dto.UserId != 0)
             {
                 baseQuery = baseQuery.Where(b => b.UserId == dto.UserId);
             }
+            var totalCount = await baseQuery.CountAsync();
+            var statusCounts = await baseQuery
+                .GroupBy(b => b.Status)
+                .Select(g => new
+                {
+                    Status = g.Key.ToString(),
+                    Count = g.Count()
+                })
+                .ToDictionaryAsync(x => x.Status, x => x.Count);
+
 
             if (dto.Status != 0)
             {
@@ -545,15 +776,6 @@ public class BorrowController : ControllerBase
             }
 
             var filteredCount = await baseQuery.CountAsync();
-
-            var statusCounts = await _context.Borrows
-                .GroupBy(b => b.Status)
-                .Select(g => new
-                {
-                    Status = g.Key.ToString(),
-                    Count = g.Count()
-                })
-                .ToDictionaryAsync(x => x.Status, x => x.Count);
 
             if ((dto.PageNo != 0) && (dto.RowCount != 0))
             {
@@ -660,7 +882,7 @@ public class BorrowController : ControllerBase
                 // Payment
                 b.PaymentMode,
                 b.IsPaymentCompleted,
-                b.PaymentId,
+                b.RazorpayPaymentId,
 
                 // Simple Logs
                 b.RequestedDate,

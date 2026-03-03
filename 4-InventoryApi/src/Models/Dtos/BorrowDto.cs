@@ -46,11 +46,17 @@ public class PaidBorrowDto
 {
     public int UserId { get; set; }
     public PaymentMode PaymentMode { get; set; }
-    public string? PaymentId { get; set; }
-    public bool IsPaymentCompleted { get; set; } = true;
 
-    public BorrowStatus Status { get; set; } = BorrowStatus.Paid;
-    public DateTime? PaidDate { get; set; }
+    public string? RazorpayOrderId { get; set; }
+    public string? RazorpayPaymentId { get; set; }
+    public string? RazorpaySignature { get; set; }
+}
+
+public class AdminCashPaymentDto
+{
+    public int UserId { get; set; }
+    public decimal PaidAmount { get; set; }
+    public string? Remarks { get; set; }
 }
 
 public class ApprovedBorrowDto

@@ -21,10 +21,8 @@ public enum BorrowStatus
 public enum PaymentMode
 {
     Cash = 1,
-    UPI = 2,
-    Card = 3,
-    BankTransfer = 4,
-    NotPaid = 5
+    RazorPay = 2,
+    NotPaid = 3
 }
 
 public class Borrow
@@ -52,12 +50,17 @@ public class Borrow
     [Precision(18, 2)]
     public decimal LateFee { get; set; } = 0;
     public PaymentMode PaymentMode { get; set; } = PaymentMode.NotPaid;
+
     public bool IsPaymentCompleted { get; set; } = false;
-    public string? PaymentId { get; set; }
+    public string? RazorpayOrderId { get; set; }
+    public string? RazorpayPaymentId { get; set; }
+    public string? RazorpaySignature { get; set; }
+    public DateTime? PaymentInitiatedDate { get; set; }
+    public DateTime? PaymentCompletedDate { get; set; }
 
 
     public BorrowStatus Status { get; set; } = BorrowStatus.Requested;
-    public int EquipmentCounts {get; set;} = 1;
+    public int EquipmentCounts { get; set; } = 1;
 
     public DateTime? RequestedDate { get; set; }
     public DateTime? AcceptedDate { get; set; }
