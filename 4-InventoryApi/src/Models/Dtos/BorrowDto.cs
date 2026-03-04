@@ -7,10 +7,9 @@ namespace App.Models.Dtos;
 public class RequestBorrowDto
 {
     public int UserId { get; set; }
-
+    public string? Description {get; set;}
     public DateTime StartDate { get; set; }
     public DateTime ExpectedReturnDate { get; set; }
-
     public List<RequestBorrowItemDto> Items { get; set; } = new();
 }
 public class RequestBorrowItemDto
@@ -23,6 +22,7 @@ public class RequestBorrowItemDto
 public class AssignBorrowDto
 {
     public int UserId { get; set; }
+    public string? Description {get; set;}
     public DateTime StartDate { get; set; }
     public DateTime ExpectedReturnDate { get; set; }
     public List<RequestBorrowItemDto> Items { get; set; } = new();
@@ -31,8 +31,7 @@ public class AssignBorrowDto
 public class AcceptedBorrowDto
 {
     public int UserId { get; set; }
-    public string? PreRemarks { get; set; }
-
+    public string? Description { get; set; }
     public BorrowStatus Status { get; set; } = BorrowStatus.Accepted;
     public DateTime? AcceptedDate { get; set; }
 }
@@ -40,13 +39,13 @@ public class AcceptedBorrowDto
 public class PendingBorrowDto
 {
     public int UserId { get; set; }
+    public string? Description { get; set; }
 }
 
 public class PaidBorrowDto
 {
     public int UserId { get; set; }
     public PaymentMode PaymentMode { get; set; }
-
     public string? RazorpayOrderId { get; set; }
     public string? RazorpayPaymentId { get; set; }
     public string? RazorpaySignature { get; set; }
@@ -56,13 +55,14 @@ public class AdminCashPaymentDto
 {
     public int UserId { get; set; }
     public decimal PaidAmount { get; set; }
+    public string? Description { get; set; }
     public string? Remarks { get; set; }
 }
 
 public class ApprovedBorrowDto
 {
     public int UserId { get; set; }
-
+    public string? Description { get; set; }
     public BorrowStatus Status { get; set; } = BorrowStatus.Approved;
     public DateTime? ApprovedDate { get; set; }
 }
@@ -70,8 +70,7 @@ public class ApprovedBorrowDto
 public class WaitlistedBorrowDto
 {
     public int UserId { get; set; }
-    public string? PostRemarks { get; set; }
-
+    public string? Description { get; set; }
     public BorrowStatus Status { get; set; } = BorrowStatus.Waitlisted;
     public DateTime? WaitlistedDate { get; set; }
 }
@@ -79,8 +78,7 @@ public class WaitlistedBorrowDto
 public class AckBorrowDto
 {
     public int UserId { get; set; }
-    public string? AckRemarks { get; set; }
-
+    public string? Description { get; set; }
     public BorrowStatus Status { get; set; } = BorrowStatus.Ack;
     public DateTime? AckDate { get; set; }
 }
@@ -88,7 +86,7 @@ public class AckBorrowDto
 public class ClosedBorrowDto
 {
     public int UserId { get; set; }
-
+    public string? Description { get; set; }
     public BorrowStatus Status { get; set; } = BorrowStatus.Closed;
     public DateTime? ClosedDate { get; set; }
 }

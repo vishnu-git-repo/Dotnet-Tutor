@@ -14,6 +14,8 @@ public class AppDBContext : DbContext
     public DbSet<EquipmentItem> EquipmentItems => Set<EquipmentItem>();
     public DbSet<Borrow> Borrows => Set<Borrow>();
     public DbSet<BorrowItems> BorrowItems => Set<BorrowItems>();
+    public DbSet<BorrowLogs> BorrowLogs => Set<BorrowLogs>();
+    public DbSet<Payments> Payments => Set<Payments>();
     
     protected override void OnModelCreating(ModelBuilder builder)
     {
@@ -40,7 +42,6 @@ public class AppDBContext : DbContext
         builder.Entity<Borrow>( entity =>
         {
             entity.Property(b => b.Status).HasConversion<int>();
-            entity.Property(b => b.PaymentMode).HasConversion<int>();
         });            
 
     }

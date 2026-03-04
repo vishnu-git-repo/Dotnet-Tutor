@@ -64,11 +64,16 @@ public class BorrowController : ControllerBase
                 UserId = dto.UserId,
                 StartDate = dto.StartDate,
                 ExpectedReturnDate = dto.ExpectedReturnDate,
-                RequestedDate = DateTime.UtcNow,
                 Status = BorrowStatus.Requested
             };
-
             _context.Borrows.Add(createBorrow);
+            _context.BorrowLogs.Add(new BorrowLogs
+            {
+                BorrowId = createBorrow.Id,
+                UserId = dto.UserId,
+                Status = BorrowStatus.Requested,
+                Description = dto.Description ?? "Created a borrow Request"
+            });
             await _context.SaveChangesAsync();
 
             decimal totalPrice = 0;
@@ -172,10 +177,8 @@ public class BorrowController : ControllerBase
                 UserId = dto.UserId,
                 StartDate = dto.StartDate,
                 ExpectedReturnDate = dto.ExpectedReturnDate,
-                AssignedDate = DateTime.UtcNow,
                 Status = BorrowStatus.Assigned
             };
-
             _context.Borrows.Add(createBorrow);
             await _context.SaveChangesAsync();
 
@@ -234,13 +237,21 @@ public class BorrowController : ControllerBase
             createBorrow.DueAmount = totalPrice;
             createBorrow.UpdatedAt = DateTime.UtcNow;
 
+             _context.BorrowLogs.Add(new BorrowLogs
+            {
+                BorrowId = createBorrow.Id,
+                UserId = dto.UserId,
+                Status = BorrowStatus.Requested,
+                Description = dto.Description ?? "Assigned a Borrow by Admin"
+            });
+
             await _context.SaveChangesAsync();
             await transaction.CommitAsync();
 
             return Ok(new ApiResponse<object>
             {
                 Status = true,
-                Message = "Borrow requested successfully",
+                Message = "Borrow Assigned successfully",
                 Data = new { BorrowId = createBorrow.Id }
             });
         }
@@ -248,7 +259,7 @@ public class BorrowController : ControllerBase
         {
             await transaction.RollbackAsync();
 
-            return Ok(new ApiResponse<object>
+            return BadRequest(new ApiResponse<object>
             {
                 Status = false,
                 Message = "Something went wrong",
@@ -266,10 +277,15 @@ public class BorrowController : ControllerBase
             return NotFound(new ApiResponse<Object>() { Status = false, Message = "Borrow not found", Data = null });
 
         borrow.Status = BorrowStatus.Accepted;
-        borrow.AcceptedDate = DateTime.UtcNow;
-        borrow.PreRemarks = dto.PreRemarks;
         borrow.UpdatedAt = DateTime.UtcNow;
 
+        _context.BorrowLogs.Add(new BorrowLogs
+        {
+            BorrowId = id,
+            UserId = dto.UserId,
+            Status = BorrowStatus.Accepted,
+            Description = dto.Description ?? "Accepted your Borrow Request!"
+        });
         await _context.SaveChangesAsync();
 
         return Ok(new ApiResponse<Object>() { Status = true, Message = "Borrow accepted", Data = borrow });
@@ -284,9 +300,15 @@ public class BorrowController : ControllerBase
             return NotFound(new ApiResponse<Object>() { Status = false, Message = "Borrow not found", Data = null });
 
         borrow.Status = BorrowStatus.Pending;
-        borrow.PendingDate = DateTime.UtcNow;
         borrow.UpdatedAt = DateTime.UtcNow;
 
+        _context.BorrowLogs.Add(new BorrowLogs
+        {
+            BorrowId = id,
+            UserId = dto.UserId,
+            Status = BorrowStatus.Pending,
+            Description = dto.Description ?? "Borrow is in use!"
+        });
         await _context.SaveChangesAsync();
 
         return Ok(new ApiResponse<Object>() { Status = true, Message = "Borrow marked pending", Data = borrow });
@@ -338,18 +360,28 @@ public class BorrowController : ControllerBase
                 Data = null
             });
 
-        borrow.PaymentMode = PaymentMode.Cash;
         borrow.IsPaymentCompleted = true;
-        borrow.PaymentCompletedDate = DateTime.UtcNow;
-
         borrow.PaidAmount = dto.PaidAmount;
         borrow.DueAmount = 0;
-
         borrow.Status = BorrowStatus.Paid;
-        borrow.PaidDate = DateTime.UtcNow;
-
-        borrow.PostRemarks = dto.Remarks;
         borrow.UpdatedAt = DateTime.UtcNow;
+
+        _context.Payments.Add(new Payments
+        {
+            BorrowId = borrow.Id,
+            UserId = borrow.UserId,
+            PaymentMode = PaymentMode.Cash,
+            Status = PaymentStatus.Success,
+            PaymentInitiatedDate = DateTime.UtcNow,
+            PaymentCompletedDate = DateTime.UtcNow       
+        });
+        _context.BorrowLogs.Add(new BorrowLogs
+        {
+            BorrowId = borrow.Id,
+            UserId = borrow.UserId,
+            Status = BorrowStatus.Paid,
+            Description = $"Payment successful via Cashier - ₹{dto.PaidAmount}"
+        });
 
         await _context.SaveChangesAsync();
 
@@ -391,12 +423,14 @@ public class BorrowController : ControllerBase
                 Message = "Borrow is not in pending state",
                 Data = null
             });
+        var payment = await _context.Payments
+            .FirstOrDefaultAsync(p => p.RazorpayOrderId == dto.RazorpayOrderId);
 
-        if (borrow.RazorpayOrderId != dto.RazorpayOrderId)
+        if (payment == null)
             return BadRequest(new ApiResponse<object>
             {
                 Status = false,
-                Message = "Order ID mismatch",
+                Message = "Payment record not found",
                 Data = null
             });
 
@@ -408,19 +442,25 @@ public class BorrowController : ControllerBase
                 Data = null
             });
 
-        borrow.PaymentMode = PaymentMode.RazorPay;
-
-        borrow.RazorpayPaymentId = dto.RazorpayPaymentId;
-        borrow.RazorpaySignature = dto.RazorpaySignature;
+        payment.RazorpayPaymentId = dto.RazorpayPaymentId;
+        payment.RazorpaySignature = dto.RazorpaySignature;
+        payment.PaymentCompletedDate = DateTime.UtcNow;
+        payment.Status = PaymentStatus.Success;
+        payment.PaymentMode = PaymentMode.RazorPay;
 
         borrow.IsPaymentCompleted = true;
-        borrow.PaymentCompletedDate = DateTime.UtcNow;
         borrow.PaidAmount = borrow.TotalPrice;
         borrow.DueAmount = 0;
-
         borrow.Status = BorrowStatus.Paid;
-        borrow.PaidDate = DateTime.UtcNow;
         borrow.UpdatedAt = DateTime.UtcNow;
+
+        _context.BorrowLogs.Add(new BorrowLogs
+        {
+            BorrowId = borrow.Id,
+            UserId = borrow.UserId,
+            Status = BorrowStatus.Paid,
+            Description = $"Payment successful via Razorpay - {borrow.TotalPrice}"
+        });
 
         await _context.SaveChangesAsync();
 
@@ -462,14 +502,6 @@ public class BorrowController : ControllerBase
                 Data = null
             });
 
-        if (!string.IsNullOrEmpty(borrow.RazorpayOrderId))
-            return BadRequest(new ApiResponse<object>
-            {
-                Status = false,
-                Message = "Order already created",
-                Data = null
-            });
-
         var key = _configuration["Razorpay:Key"];
         var secret = _configuration["Razorpay:Secret"];
 
@@ -493,10 +525,17 @@ public class BorrowController : ControllerBase
 
         Order order = client.Order.Create(options);
 
-        borrow.RazorpayOrderId = order["id"].ToString();
-        borrow.PaymentInitiatedDate = DateTime.UtcNow;
-        borrow.UpdatedAt = DateTime.UtcNow;
+        var payment = new Payments
+        {
+            BorrowId = borrow.Id,
+            UserId = borrow.UserId,
+            PaymentMode = PaymentMode.RazorPay,
+            RazorpayOrderId = order["id"].ToString(),
+            PaymentInitiatedDate = DateTime.UtcNow,
+            Status = PaymentStatus.Fails
+        };
 
+        _context.Payments.Add(payment);
         await _context.SaveChangesAsync();
 
         return Ok(new ApiResponse<object>
@@ -505,7 +544,7 @@ public class BorrowController : ControllerBase
             Message = "Order created",
             Data = new
             {
-                orderId = borrow.RazorpayOrderId,
+                orderId = payment.RazorpayOrderId,
                 amount = options["amount"],
                 key = key
             }
@@ -522,8 +561,15 @@ public class BorrowController : ControllerBase
         if (!borrow.IsPaymentCompleted)
             return BadRequest(new ApiResponse<Object>() { Status = false, Message = "Payment is pending", Data = null });
         borrow.Status = BorrowStatus.Approved;
-        borrow.ApprovedDate = DateTime.UtcNow;
         borrow.UpdatedAt = DateTime.UtcNow;
+
+        _context.BorrowLogs.Add( new BorrowLogs
+        {
+            BorrowId = borrow.Id,
+            UserId = dto.UserId,
+            Description = dto.Description ?? "Borrow Approved successfully",
+            Status = BorrowStatus.Approved
+        });
 
         await _context.SaveChangesAsync();
 
@@ -539,9 +585,15 @@ public class BorrowController : ControllerBase
             return NotFound(new ApiResponse<Object>() { Status = false, Message = "Borrow not found", Data = (object?)null });
 
         borrow.Status = BorrowStatus.Waitlisted;
-        borrow.WaitlistedDate = DateTime.UtcNow;
-        borrow.PostRemarks = dto.PostRemarks;
         borrow.UpdatedAt = DateTime.UtcNow;
+
+        _context.BorrowLogs.Add( new BorrowLogs
+        {
+            BorrowId = borrow.Id,
+            UserId = dto.UserId,
+            Description = dto.Description ?? "Mark as waitlisted",
+            Status = BorrowStatus.Waitlisted
+        });
 
         await _context.SaveChangesAsync();
 
@@ -557,9 +609,15 @@ public class BorrowController : ControllerBase
             return NotFound(new ApiResponse<Object>() { Status = false, Message = "Borrow not found", Data = null });
 
         borrow.Status = BorrowStatus.Ack;
-        borrow.AckDate = DateTime.UtcNow;
-        borrow.AckRemarks = dto.AckRemarks;
         borrow.UpdatedAt = DateTime.UtcNow;
+
+        _context.BorrowLogs.Add( new BorrowLogs
+        {
+            BorrowId = borrow.Id,
+            UserId = dto.UserId,
+            Description = dto.Description ?? "Ack message",
+            Status = BorrowStatus.Ack
+        });
 
         await _context.SaveChangesAsync();
 
@@ -575,24 +633,19 @@ public class BorrowController : ControllerBase
             return NotFound(new ApiResponse<Object>() { Status = false, Message = "Borrow not found", Data = (object?)null });
 
         borrow.Status = BorrowStatus.Closed;
-        borrow.ClosedDate = DateTime.UtcNow;
         borrow.UpdatedAt = DateTime.UtcNow;
+
+        _context.BorrowLogs.Add( new BorrowLogs
+        {
+            BorrowId = borrow.Id,
+            UserId = dto.UserId,
+            Description = dto.Description ?? "Closed a borrow",
+            Status = BorrowStatus.Closed
+        });
 
         await _context.SaveChangesAsync();
 
         return Ok(new ApiResponse<Object>() { Status = true, Message = "Borrow closed", Data = borrow });
-    }
-
-    [Authorize(Roles = "Admin")]
-    [HttpGet]
-    public async Task<IActionResult> GetAll()
-    {
-        var data = await _context.Borrows
-            .Include(x => x.User)
-            .OrderByDescending(x => x.CreatedAt)
-            .ToListAsync();
-
-        return Ok(new ApiResponse<Object>() { Status = true, Message = "Borrow list", Data = data });
     }
 
     [Authorize(Roles = "Admin")]
@@ -856,6 +909,31 @@ public class BorrowController : ControllerBase
     {
         try
         {
+            var payments = await _context.Payments
+                .Where(p => p.BorrowId == id)
+                .Select(p => new
+                {
+                    id = p.Id,
+                    paymentMode = p.PaymentMode,
+                    status = p.Status,
+                    razorPayOrderId = p.RazorpayOrderId,
+                    razorPayPaymentId = p.RazorpayPaymentId,
+                    paymentInitiatedDate = p.PaymentInitiatedDate,
+                    paymentCompletedDate = p.PaymentCompletedDate
+                })
+                .OrderBy(p=>p.id)
+                .ToListAsync();
+            var borrowLogs = await _context.BorrowLogs
+                .Where(l => l.BorrowId == id)
+                .Select(l => new
+                {
+                    id = l.Id,
+                    status = l.Status,
+                    description = l.Description,
+                    createdAt = l.CreatedAt
+                })
+                .OrderBy(l => l.id)
+                .ToListAsync();
             var borrow = await _context.Borrows
             .Include(x => x.User)
             .Select(b => new
@@ -877,28 +955,7 @@ public class BorrowController : ControllerBase
                 b.TotalPrice,
                 b.PaidAmount,
                 b.DueAmount,
-                b.LateFee,
-
-                // Payment
-                b.PaymentMode,
                 b.IsPaymentCompleted,
-                b.RazorpayPaymentId,
-
-                // Simple Logs
-                b.RequestedDate,
-                b.AcceptedDate,
-                b.AssignedDate,
-                b.PendingDate,
-                b.PaidDate,
-                b.ApprovedDate,
-                b.WaitlistedDate,
-                b.AckDate,
-                b.ClosedDate,
-
-                // Remarks or Description
-                b.PreRemarks,
-                b.PostRemarks,
-                b.AckRemarks,
 
                 // Time Stamp
                 b.CreatedAt,
@@ -946,7 +1003,9 @@ public class BorrowController : ControllerBase
                 new
                 {
                     Borrow = borrow,
-                    Equipments = borrowItems
+                    BorrowLogs = borrowLogs,
+                    Payment = payments,
+                    Equipments = borrowItems,
                 }
             });
         }

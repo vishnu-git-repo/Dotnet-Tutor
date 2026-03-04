@@ -18,13 +18,6 @@ public enum BorrowStatus
     Closed = 9
 }
 
-public enum PaymentMode
-{
-    Cash = 1,
-    RazorPay = 2,
-    NotPaid = 3
-}
-
 public class Borrow
 {
     [Key]
@@ -49,32 +42,10 @@ public class Borrow
     public decimal DueAmount { get; set; }
     [Precision(18, 2)]
     public decimal LateFee { get; set; } = 0;
-    public PaymentMode PaymentMode { get; set; } = PaymentMode.NotPaid;
-
     public bool IsPaymentCompleted { get; set; } = false;
-    public string? RazorpayOrderId { get; set; }
-    public string? RazorpayPaymentId { get; set; }
-    public string? RazorpaySignature { get; set; }
-    public DateTime? PaymentInitiatedDate { get; set; }
-    public DateTime? PaymentCompletedDate { get; set; }
-
 
     public BorrowStatus Status { get; set; } = BorrowStatus.Requested;
     public int EquipmentCounts { get; set; } = 1;
-
-    public DateTime? RequestedDate { get; set; }
-    public DateTime? AcceptedDate { get; set; }
-    public DateTime? AssignedDate { get; set; }
-    public DateTime? PendingDate { get; set; }
-    public DateTime? PaidDate { get; set; }
-    public DateTime? ApprovedDate { get; set; }
-    public DateTime? WaitlistedDate { get; set; }
-    public DateTime? AckDate { get; set; }
-    public DateTime? ClosedDate { get; set; }
-
-    public string? PreRemarks { get; set; }
-    public string? PostRemarks { get; set; }
-    public string? AckRemarks { get; set; }
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
