@@ -6,6 +6,11 @@ using App.Common;
 
 namespace App.Services;
 
+public interface IEmailService
+{
+    Task SendEmailAsync(string toEmail, string subject, string htmlMessage);
+}
+
 public class EmailService : IEmailService
 {
     private readonly EmailSettings _settings;

@@ -16,6 +16,7 @@ public class AppDBContext : DbContext
     public DbSet<BorrowItems> BorrowItems => Set<BorrowItems>();
     public DbSet<BorrowLogs> BorrowLogs => Set<BorrowLogs>();
     public DbSet<Payments> Payments => Set<Payments>();
+    public DbSet<OTPHash> OTPHashes => Set<OTPHash>();
     
     protected override void OnModelCreating(ModelBuilder builder)
     {

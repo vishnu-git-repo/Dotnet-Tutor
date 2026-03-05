@@ -21,9 +21,27 @@ public class JwtService
         {
             new Claim(ClaimTypes.NameIdentifier, userId.ToString()),
             new Claim(ClaimTypes.Email, email),
-            new Claim(ClaimTypes.Role, role.ToString())
+            new Claim(ClaimTypes.Role, role.ToString()),
+            new Claim("TokenType", "Access")
         };
 
+        return BuildToken(claims, DateTime.UtcNow.AddHours(24));
+    }
+
+    public string GeneratePasswordResetToken(int userId, string email)
+    {
+        var claims = new[]
+        {
+            new Claim(ClaimTypes.NameIdentifier, userId.ToString()),
+            new Claim(ClaimTypes.Email, email),
+            new Claim("TokenType", "PasswordReset")
+        };
+
+        return BuildToken(claims, DateTime.UtcNow.AddMinutes(10));
+    }
+
+    private string BuildToken(Claim[] claims, DateTime expiry)
+    {
         var key = new SymmetricSecurityKey(
             Encoding.UTF8.GetBytes(_config["Jwt:Key"]!)
         );
@@ -34,9 +52,10 @@ public class JwtService
             issuer: _config["Jwt:Issuer"],
             audience: _config["Jwt:Audience"],
             claims: claims,
-            expires: DateTime.Now.AddHours(24*1),
+            expires: expiry,
             signingCredentials: creds
         );
+
         return new JwtSecurityTokenHandler().WriteToken(token);
     }
 }

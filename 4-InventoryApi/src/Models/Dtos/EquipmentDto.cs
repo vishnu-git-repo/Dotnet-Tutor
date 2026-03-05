@@ -11,6 +11,12 @@ public class CreateEquipmentDto
     public int Count { get; set; } = 1;
 } 
 
+public class CreateEquipmentItemDto
+{
+    public required int EquipmentId {get; set;}
+    public required int Count {get; set;}
+}
+
 public class GetFilteredEquipmentDto
 {
     public required int RowCount {get; set;}
@@ -19,6 +25,15 @@ public class GetFilteredEquipmentDto
     public required bool IsGroup {get; set;}
     public required int Condition {get; set;} = 0;
     public required int Category {get; set;} = 0;
+    public required int Status {get; set;} = 0;
+    public int? EquipmentId {get; set;}
+}
+
+public class GetEquipmentGroupItemsDto
+{
+    public required int RowCount {get; set;}
+    public required int PageNo {get; set;}
+    public required int Condition {get; set;} = 0;
     public required int Status {get; set;} = 0;
     public int? EquipmentId {get; set;}
 }
