@@ -11,7 +11,10 @@ public class BorrowLogs
 
     public int UserId {get; set;}
     public int BorrowId {get; set;}
-    public BorrowStatus Status {get; set;}
+    public UserRole UserRole {get; set;}
+    public BorrowStatus? StatusFrom {get; set;}
+    public BorrowStatus StatusTo {get; set;}
+    public string Action {get; set;} = "";
     public string Description {get; set;} ="";
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 

@@ -1,5 +1,6 @@
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
+using Microsoft.EntityFrameworkCore;
 
 
 namespace App.Models.Entities;
@@ -23,6 +24,10 @@ public class Payments
     public int Id {get; set;}
     public int BorrowId {get; set;}
     public int UserId {get; set;}
+
+    [Precision(18,2)]
+    public decimal Price {get; set;}
+
     public PaymentMode PaymentMode { get; set; } = PaymentMode.NotPaid;
     public PaymentStatus Status {get; set;}
     public string? RazorpayOrderId { get; set; }

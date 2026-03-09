@@ -18,9 +18,8 @@ public class InsightController : ControllerBase
         _context = context;
     }
 
+    [HttpGet("admin")]
     [Authorize(Roles = "Admin")]
-    [Route("admin")]
-    [HttpGet]
     public async Task<IActionResult> GetAdminInsightCounts()
     {
         try
@@ -28,7 +27,7 @@ public class InsightController : ControllerBase
 
             // User
             var userQuery = _context.Users
-            .Where( u => u.Role == UserRole.Client)
+            .Where(u => u.Role == UserRole.Client)
             .AsQueryable();
             var userTotalCount = await userQuery.CountAsync();
             var groupedUserStatusData = await userQuery
@@ -102,8 +101,10 @@ public class InsightController : ControllerBase
                 Status = true,
                 Message = "Insight Counts Fetched successfully",
                 Data =
-                new {
-                    User = new {
+                new
+                {
+                    User = new
+                    {
                         Total = userTotalCount,
                         Status = userCounts
                     },
@@ -130,6 +131,70 @@ public class InsightController : ControllerBase
             });
         }
     }
+
+    [HttpGet("client/{id:int}")]
+    [Authorize(Roles = "Client")]
+    public async Task<IActionResult> GetClientInsightCounts( int id)
+    {
+        try
+        {
+            if(id==0)
+            {
+                return NotFound( new ApiResponse<object>
+                {
+                   Status = false,
+                   Message = "User not Found" 
+                });
+            }
+
+            // Borrow 
+            var borrowQuery = _context.Borrows
+            .Where(b => b.UserId == id)
+            .AsQueryable();
+            var BorrowTotalCount = await borrowQuery.CountAsync();
+            var groupedBorrowStatusData = await borrowQuery
+                .GroupBy(b => b.Status)
+                .Select(g => new
+                {
+                    Status = g.Key,
+                    Count = g.Count()
+                })
+                .ToListAsync();
+
+            // Structured Counts
+
+            var borrowCounts = groupedBorrowStatusData
+                .ToDictionary(
+                    x => x.Status.ToString(),
+                    x => x.Count
+                );
+
+
+            return Ok(new ApiResponse<Object>
+            {
+                Status = true,
+                Message = "Insight Counts Fetched successfully",
+                Data =
+                new
+                {
+                    Borrow = new
+                    {
+                        Total = BorrowTotalCount,
+                        Status = borrowCounts
+                    }
+                }
+            });
+        }
+        catch (Exception ex)
+        {
+            return BadRequest(new ApiResponse<Object>
+            {
+                Status = false,
+                Message = $"Internal Server Error - {ex.Message}"
+            });
+        }
+    }
+
 
 
     private ApiResponse<object> ErrorResponse()

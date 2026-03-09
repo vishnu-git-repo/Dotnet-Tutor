@@ -59,21 +59,16 @@ public class BorrowController : ControllerBase
                 });
             }
 
+
             var createBorrow = new Borrow
             {
                 UserId = dto.UserId,
                 StartDate = dto.StartDate,
                 ExpectedReturnDate = dto.ExpectedReturnDate,
-                Status = BorrowStatus.Requested
+                Status = BorrowStatus.Requested,
+                EquipmentCounts = dto.Items.Count
             };
             _context.Borrows.Add(createBorrow);
-            _context.BorrowLogs.Add(new BorrowLogs
-            {
-                BorrowId = createBorrow.Id,
-                UserId = dto.UserId,
-                Status = BorrowStatus.Requested,
-                Description = dto.Description ?? "Created a borrow Request"
-            });
             await _context.SaveChangesAsync();
 
             decimal totalPrice = 0;
@@ -114,6 +109,7 @@ public class BorrowController : ControllerBase
                 foreach (var item in availableItems)
                 {
                     item.Status = EquipmentStatus.InUse;
+                    item.Condition = EquipmentCondition.Good;
 
                     _context.BorrowItems.Add(new BorrowItems
                     {
@@ -131,6 +127,16 @@ public class BorrowController : ControllerBase
             createBorrow.DueAmount = totalPrice;
             createBorrow.UpdatedAt = DateTime.UtcNow;
 
+            _context.BorrowLogs.Add(new BorrowLogs
+            {
+                BorrowId = createBorrow.Id,
+                UserId = dto.UserId,
+                StatusTo = BorrowStatus.Requested,
+                UserRole = UserRole.Client,
+                Action = "Created a borrow Request",
+                Description = dto.Description
+            });
+
             await _context.SaveChangesAsync();
             await transaction.CommitAsync();
 
@@ -141,14 +147,14 @@ public class BorrowController : ControllerBase
                 Data = new { BorrowId = createBorrow.Id }
             });
         }
-        catch (Exception)
+        catch (Exception ex)
         {
             await transaction.RollbackAsync();
-
+            Console.WriteLine(ex);
             return Ok(new ApiResponse<object>
             {
                 Status = false,
-                Message = "Something went wrong",
+                Message = $"Something went wrong, {ex.Message}",
                 Data = null
             });
         }
@@ -177,7 +183,8 @@ public class BorrowController : ControllerBase
                 UserId = dto.UserId,
                 StartDate = dto.StartDate,
                 ExpectedReturnDate = dto.ExpectedReturnDate,
-                Status = BorrowStatus.Assigned
+                Status = BorrowStatus.Assigned,
+                EquipmentCounts = dto.Items.Count
             };
             _context.Borrows.Add(createBorrow);
             await _context.SaveChangesAsync();
@@ -220,6 +227,7 @@ public class BorrowController : ControllerBase
                 foreach (var item in availableItems)
                 {
                     item.Status = EquipmentStatus.InUse;
+                    item.Condition = EquipmentCondition.Good;
 
                     _context.BorrowItems.Add(new BorrowItems
                     {
@@ -237,12 +245,14 @@ public class BorrowController : ControllerBase
             createBorrow.DueAmount = totalPrice;
             createBorrow.UpdatedAt = DateTime.UtcNow;
 
-             _context.BorrowLogs.Add(new BorrowLogs
+            _context.BorrowLogs.Add(new BorrowLogs
             {
                 BorrowId = createBorrow.Id,
                 UserId = dto.UserId,
-                Status = BorrowStatus.Requested,
-                Description = dto.Description ?? "Assigned a Borrow by Admin"
+                UserRole = UserRole.Admin,
+                StatusTo = BorrowStatus.Assigned,
+                Action = "Assigned a Borrow",
+                Description = dto.Description
             });
 
             await _context.SaveChangesAsync();
@@ -276,16 +286,20 @@ public class BorrowController : ControllerBase
         if (borrow == null || borrow.UserId != dto.UserId)
             return NotFound(new ApiResponse<Object>() { Status = false, Message = "Borrow not found", Data = null });
 
-        borrow.Status = BorrowStatus.Accepted;
-        borrow.UpdatedAt = DateTime.UtcNow;
-
         _context.BorrowLogs.Add(new BorrowLogs
         {
             BorrowId = id,
             UserId = dto.UserId,
-            Status = BorrowStatus.Accepted,
-            Description = dto.Description ?? "Accepted your Borrow Request!"
+            UserRole = UserRole.Admin,
+            Action = "Accepted your Borrow Request",
+            StatusFrom = borrow.Status,
+            StatusTo = BorrowStatus.Accepted,
+            Description = dto.Description
         });
+
+        borrow.Status = BorrowStatus.Accepted;
+        borrow.UpdatedAt = DateTime.UtcNow;
+
         await _context.SaveChangesAsync();
 
         return Ok(new ApiResponse<Object>() { Status = true, Message = "Borrow accepted", Data = borrow });
@@ -297,18 +311,22 @@ public class BorrowController : ControllerBase
     {
         var borrow = await _context.Borrows.FindAsync(id);
         if (borrow == null || borrow.UserId != dto.UserId)
-            return NotFound(new ApiResponse<Object>() { Status = false, Message = "Borrow not found", Data = null });
-
-        borrow.Status = BorrowStatus.Pending;
-        borrow.UpdatedAt = DateTime.UtcNow;
+            return NotFound(new ApiResponse<Object>() { Status = false, Message = "Borrow not found", Data = borrow });
 
         _context.BorrowLogs.Add(new BorrowLogs
         {
             BorrowId = id,
             UserId = dto.UserId,
-            Status = BorrowStatus.Pending,
-            Description = dto.Description ?? "Borrow is in use!"
+            UserRole = UserRole.Client,
+            StatusFrom = borrow.Status,
+            StatusTo = BorrowStatus.Pending,
+            Action = "Started the work by borrowed equipments",
+            Description = dto.Description
         });
+
+        borrow.Status = BorrowStatus.Pending;
+        borrow.UpdatedAt = DateTime.UtcNow;
+
         await _context.SaveChangesAsync();
 
         return Ok(new ApiResponse<Object>() { Status = true, Message = "Borrow marked pending", Data = borrow });
@@ -360,12 +378,6 @@ public class BorrowController : ControllerBase
                 Data = null
             });
 
-        borrow.IsPaymentCompleted = true;
-        borrow.PaidAmount = dto.PaidAmount;
-        borrow.DueAmount = 0;
-        borrow.Status = BorrowStatus.Paid;
-        borrow.UpdatedAt = DateTime.UtcNow;
-
         _context.Payments.Add(new Payments
         {
             BorrowId = borrow.Id,
@@ -373,15 +385,24 @@ public class BorrowController : ControllerBase
             PaymentMode = PaymentMode.Cash,
             Status = PaymentStatus.Success,
             PaymentInitiatedDate = DateTime.UtcNow,
-            PaymentCompletedDate = DateTime.UtcNow       
+            PaymentCompletedDate = DateTime.UtcNow
         });
         _context.BorrowLogs.Add(new BorrowLogs
         {
             BorrowId = borrow.Id,
             UserId = borrow.UserId,
-            Status = BorrowStatus.Paid,
-            Description = $"Payment successful via Cashier - ₹{dto.PaidAmount}"
+            UserRole = UserRole.Admin,
+            StatusFrom = borrow.Status,
+            StatusTo = BorrowStatus.Paid,
+            Action = $"Collects amount via Cashier - ₹{dto.PaidAmount}",
+            Description = dto.Description
         });
+
+        borrow.IsPaymentCompleted = true;
+        borrow.PaidAmount = dto.PaidAmount;
+        borrow.DueAmount = 0;
+        borrow.Status = BorrowStatus.Paid;
+        borrow.UpdatedAt = DateTime.UtcNow;
 
         await _context.SaveChangesAsync();
 
@@ -448,19 +469,22 @@ public class BorrowController : ControllerBase
         payment.Status = PaymentStatus.Success;
         payment.PaymentMode = PaymentMode.RazorPay;
 
+        _context.BorrowLogs.Add(new BorrowLogs
+        {
+            BorrowId = borrow.Id,
+            UserId = borrow.UserId,
+            UserRole = UserRole.Client,
+            StatusFrom = borrow.Status,
+            StatusTo = BorrowStatus.Paid,
+            Action = $"Do payment via Razorpay - ₹{borrow.TotalPrice}",
+            Description = dto.Description
+        });
+
         borrow.IsPaymentCompleted = true;
         borrow.PaidAmount = borrow.TotalPrice;
         borrow.DueAmount = 0;
         borrow.Status = BorrowStatus.Paid;
         borrow.UpdatedAt = DateTime.UtcNow;
-
-        _context.BorrowLogs.Add(new BorrowLogs
-        {
-            BorrowId = borrow.Id,
-            UserId = borrow.UserId,
-            Status = BorrowStatus.Paid,
-            Description = $"Payment successful via Razorpay - {borrow.TotalPrice}"
-        });
 
         await _context.SaveChangesAsync();
 
@@ -532,7 +556,8 @@ public class BorrowController : ControllerBase
             PaymentMode = PaymentMode.RazorPay,
             RazorpayOrderId = order["id"].ToString(),
             PaymentInitiatedDate = DateTime.UtcNow,
-            Status = PaymentStatus.Fails
+            Status = PaymentStatus.Fails,
+            Price = borrow.TotalPrice
         };
 
         _context.Payments.Add(payment);
@@ -555,27 +580,96 @@ public class BorrowController : ControllerBase
     [HttpPut("approve/{id:int}")]
     public async Task<IActionResult> ApproveBorrow(int id, ApprovedBorrowDto dto)
     {
-        var borrow = await _context.Borrows.FindAsync(id);
-        if (borrow == null || borrow.UserId != dto.UserId)
-            return NotFound(new ApiResponse<Object>() { Status = false, Message = "Borrow not found", Data = null });
-        if (!borrow.IsPaymentCompleted)
-            return BadRequest(new ApiResponse<Object>() { Status = false, Message = "Payment is pending", Data = null });
-        borrow.Status = BorrowStatus.Approved;
-        borrow.UpdatedAt = DateTime.UtcNow;
+        using var transaction = await _context.Database.BeginTransactionAsync();
 
-        _context.BorrowLogs.Add( new BorrowLogs
+        try
         {
-            BorrowId = borrow.Id,
-            UserId = dto.UserId,
-            Description = dto.Description ?? "Borrow Approved successfully",
-            Status = BorrowStatus.Approved
-        });
+            var borrow = await _context.Borrows.FindAsync(id);
 
-        await _context.SaveChangesAsync();
+            if (borrow == null || borrow.UserId != dto.UserId)
+                return NotFound(new ApiResponse<object>
+                {
+                    Status = false,
+                    Message = "Borrow not found",
+                    Data = null
+                });
 
-        return Ok(new { status = true, message = "Borrow approved", data = borrow });
+            if (!borrow.IsPaymentCompleted)
+                return BadRequest(new ApiResponse<object>
+                {
+                    Status = false,
+                    Message = "Payment is pending",
+                    Data = null
+                });
+
+            // if (borrow.Status != BorrowStatus.Paid)
+            //     return BadRequest(new ApiResponse<object>
+            //     {
+            //         Status = false,
+            //         Message = "Borrow must be in Paid state",
+            //         Data = null
+            //     });
+
+            var borrowItems = await _context.BorrowItems
+                .Where(bi => bi.BorrowId == id)
+                .ToListAsync();
+
+            foreach (var item in borrowItems)
+            {
+                item.IsReturned = true;
+                item.ReturnedAt = DateTime.UtcNow;
+
+                var equipmentItem = await _context.EquipmentItems
+                    .FirstOrDefaultAsync(ei => ei.Id == item.EquipmentItemId);
+
+                if (equipmentItem != null)
+                {
+                    equipmentItem.Condition = EquipmentCondition.Good;
+                    equipmentItem.Status = EquipmentStatus.Available;
+                }
+            }
+
+            _context.BorrowLogs.Add(new BorrowLogs
+            {
+                BorrowId = borrow.Id,
+                UserId = dto.UserId,
+                UserRole = UserRole.Admin,
+                StatusFrom = borrow.Status,
+                StatusTo = BorrowStatus.Approved,
+                Action = "Approved the borrow return",
+                Description = dto.Description
+            });
+
+            borrow.Status = BorrowStatus.Approved;
+            borrow.ActualReturnDate = DateTime.UtcNow;
+            borrow.UpdatedAt = DateTime.UtcNow;
+
+            await _context.SaveChangesAsync();
+
+            await transaction.CommitAsync();
+
+            return Ok(new ApiResponse<object>
+            {
+                Status = true,
+                Message = "Borrow approved successfully",
+                Data = null
+            });
+        }
+        catch (Exception ex)
+        {
+            await transaction.RollbackAsync();
+
+            Console.WriteLine(ex);
+
+            return Ok(new ApiResponse<object>
+            {
+                Status = false,
+                Message = "Something went wrong",
+                Data = null
+            });
+        }
     }
-
+    
     [Authorize(Roles = "Admin")]
     [HttpPut("waitlist/{id:int}")]
     public async Task<IActionResult> WaitlistBorrow(int id, WaitlistedBorrowDto dto)
@@ -584,16 +678,19 @@ public class BorrowController : ControllerBase
         if (borrow == null || borrow.UserId != dto.UserId)
             return NotFound(new ApiResponse<Object>() { Status = false, Message = "Borrow not found", Data = (object?)null });
 
-        borrow.Status = BorrowStatus.Waitlisted;
-        borrow.UpdatedAt = DateTime.UtcNow;
-
-        _context.BorrowLogs.Add( new BorrowLogs
+        _context.BorrowLogs.Add(new BorrowLogs
         {
             BorrowId = borrow.Id,
             UserId = dto.UserId,
-            Description = dto.Description ?? "Mark as waitlisted",
-            Status = BorrowStatus.Waitlisted
+            UserRole = UserRole.Admin,
+            Action = "Mark the borrow to Waitlisted",
+            Description = dto.Description,
+            StatusFrom = borrow.Status,
+            StatusTo = BorrowStatus.Waitlisted
         });
+
+        borrow.Status = BorrowStatus.Waitlisted;
+        borrow.UpdatedAt = DateTime.UtcNow;
 
         await _context.SaveChangesAsync();
 
@@ -608,16 +705,19 @@ public class BorrowController : ControllerBase
         if (borrow == null || borrow.UserId != dto.UserId)
             return NotFound(new ApiResponse<Object>() { Status = false, Message = "Borrow not found", Data = null });
 
-        borrow.Status = BorrowStatus.Ack;
-        borrow.UpdatedAt = DateTime.UtcNow;
-
-        _context.BorrowLogs.Add( new BorrowLogs
+        _context.BorrowLogs.Add(new BorrowLogs
         {
             BorrowId = borrow.Id,
             UserId = dto.UserId,
-            Description = dto.Description ?? "Ack message",
-            Status = BorrowStatus.Ack
+            UserRole = UserRole.Client,
+            Action = "Send an Acknowledgement",
+            Description = dto.Description,
+            StatusFrom = borrow.Status,
+            StatusTo = BorrowStatus.Ack
         });
+
+        borrow.Status = BorrowStatus.Ack;
+        borrow.UpdatedAt = DateTime.UtcNow;
 
         await _context.SaveChangesAsync();
 
@@ -632,16 +732,19 @@ public class BorrowController : ControllerBase
         if (borrow == null || borrow.UserId != dto.UserId)
             return NotFound(new ApiResponse<Object>() { Status = false, Message = "Borrow not found", Data = (object?)null });
 
-        borrow.Status = BorrowStatus.Closed;
-        borrow.UpdatedAt = DateTime.UtcNow;
-
-        _context.BorrowLogs.Add( new BorrowLogs
+        _context.BorrowLogs.Add(new BorrowLogs
         {
             BorrowId = borrow.Id,
             UserId = dto.UserId,
-            Description = dto.Description ?? "Closed a borrow",
-            Status = BorrowStatus.Closed
+            UserRole = UserRole.Admin,
+            Action = "Closed the borrow",
+            Description = dto.Description,
+            StatusFrom = borrow.Status,
+            StatusTo = BorrowStatus.Closed
         });
+
+        borrow.Status = BorrowStatus.Closed;
+        borrow.UpdatedAt = DateTime.UtcNow;
 
         await _context.SaveChangesAsync();
 
@@ -794,12 +897,18 @@ public class BorrowController : ControllerBase
     {
         try
         {
-            var baseQuery = _context.Borrows.AsNoTracking();
-
-            if (dto.UserId != 0)
+            if (dto.UserId == 0)
             {
-                baseQuery = baseQuery.Where(b => b.UserId == dto.UserId);
+                return NotFound(new ApiResponse<object>
+                {
+                    Status = false,
+                    Message = "User not Found"
+                });
             }
+            var baseQuery = _context.Borrows
+            .Where(b => b.UserId == dto.UserId)
+            .AsNoTracking();
+
             var totalCount = await baseQuery.CountAsync();
             var statusCounts = await baseQuery
                 .GroupBy(b => b.Status)
@@ -916,21 +1025,33 @@ public class BorrowController : ControllerBase
                     id = p.Id,
                     paymentMode = p.PaymentMode,
                     status = p.Status,
+                    price = p.Price,
                     razorPayOrderId = p.RazorpayOrderId,
                     razorPayPaymentId = p.RazorpayPaymentId,
                     paymentInitiatedDate = p.PaymentInitiatedDate,
                     paymentCompletedDate = p.PaymentCompletedDate
                 })
-                .OrderBy(p=>p.id)
+                .OrderBy(p => p.id)
                 .ToListAsync();
             var borrowLogs = await _context.BorrowLogs
+                .Include(l => l.User)
                 .Where(l => l.BorrowId == id)
                 .Select(l => new
                 {
                     id = l.Id,
-                    status = l.Status,
+                    userRole = l.UserRole,
+                    statusFrom = l.StatusFrom,
+                    statusTo = l.StatusTo,
+                    action = l.Action,
                     description = l.Description,
-                    createdAt = l.CreatedAt
+                    createdAt = l.CreatedAt,
+                    user = new
+                    {
+                        id = l.User!.Id,
+                        name = l.User!.Name,
+                        email = l.User!.Email,
+                        password = l.User!.Phone
+                    }
                 })
                 .OrderBy(l => l.id)
                 .ToListAsync();
